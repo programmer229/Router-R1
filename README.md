@@ -15,7 +15,7 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
         <img alt="Build" src="https://img.shields.io/badge/Twitter-black?logo=X">
     </a> -->
     <a href="https://github.com/ulab-uiuc/Router-R1/blob/master/LICENSE">
-        <img alt="License" src="https://img.shields.io/badge/LICENSE-MIT-green">
+        <img alt="License" src="https://img.shields.io/badge/LICENSE-Apache-green">
     </a>
     <br>
     <a href="https://github.com/ulab-uiuc/Router-R1">
