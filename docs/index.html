@@ -173,7 +173,7 @@
                   </p>
               </div>
               <div>
-                  <img src="./static/figs/model.png" alt="model figure" width="600px"/>
+                  <img src="./static/figs/model.png" alt="model figure" width="700px"/>
                   <p>Router-R1 Model Architecture</p>
               </div>
           </div>
@@ -192,8 +192,8 @@
                   <p>
                       We evaluate Router-R1 on seven QA benchmarks, covering both general and multi-hop QA. As shown in Table below, several key findings emerge:
                       <b>(1)</b> Router-R1 consistently outperforms all basic baselines, including Direct, CoT, SFT, and RAG, particularly on knowledge-intensive tasks. It also surpasses Search-R1, despite its multi-turn retrieval ability, highlighting the benefits of Router-R1's dynamic multi-round routing. Notably, Router-R1-Llama and Router-R1-Qwen achieve the highest average EM scores of 0.409 and 0.416, respectively.
-                      <b>(2)</b>Router-R1 beats all LLM router baselines, such as Prompt LLM, KNN Router, and their enhanced variants. Its core strength lies in using an LLM as the router, enabling interleaved reasoning and routing, which improves coordination across models and tasks.
-                      <b>(3)</b>Router-R1 generalizes well to unseen data, achieving strong performance on five out-of-domain datasets, despite being trained only on NQ and HotpotQA. This demonstrates its robust and transferable routing strategies.
+                      <b>(2)</b> Router-R1 beats all LLM router baselines, such as Prompt LLM, KNN Router, and their enhanced variants. Its core strength lies in using an LLM as the router, enabling interleaved reasoning and routing, which improves coordination across models and tasks.
+                      <b>(3)</b> Router-R1 generalizes well to unseen data, achieving strong performance on five out-of-domain datasets, despite being trained only on NQ and HotpotQA. This demonstrates its robust and transferable routing strategies.
                   </p>
               </div>
               <img src="./static/figs/result.jpg" alt="experimental results" width="600px"/>
