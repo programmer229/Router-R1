@@ -157,7 +157,7 @@ CUDA_VISIBLE_DEVICES=2,3,4,5 python infer_vllm.py \
 
     + Modify the `check_llm_name` function in `router_r1/llm_agent/route_service.py` to configure your own LLM routing pool parser.
 
-    + You should also update the API_PRICE_1M_TOKENS dictionary in the same file based on the API pricing of your selected models (see [Together API Pricing](https://www.together.ai/pricing) for reference).
+    + You should also update the `API_PRICE_1M_TOKENS` dictionary in the same file based on the API pricing of your selected models (see [Together API Pricing](https://www.together.ai/pricing) for reference).
 
 
 - **LAST**
