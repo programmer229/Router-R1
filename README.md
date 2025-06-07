@@ -50,7 +50,7 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 
 
-## 📌Environment Setup
+## 🛠️Environment Setup
 
 ```bash
 conda create -n router-r1 python=3.9
@@ -95,14 +95,21 @@ python data_process/qa_test_gen.py --data_sources nq --model qwen
 Start training Router-R1 with the following command:
 
 ```bash
+# You can also set parameters such as cost_coe=0.9 in train.sh 
+# to adjust the trade-off between performance and cost (default is 0.0)
+
+# Additionally, you can customize the reward_metric to train Router-R1 
+# based on different final outcome rewards. 
+# Currently supported options are "em" (exact match) and "f1" (f1-score).
+
 bash train.sh
 ```
 
-> 
 
 > \[!IMPORTANT\]
 >
-> Make sure to set your own API KEY in the train.sh script before running.
+> **Make sure to set your own API KEY in the `train.sh` script before running.**
+> Despite the use of a hierarchical reward function, we strongly recommend increasing the batch size if GPU resources permit, as it leads to more stable training.
 
 
 
@@ -114,7 +121,51 @@ You can evaluate Router-R1 on the previously generated test set with:
 bash test.sh
 ```
 
-Make sure the test data has been generated beforehand using qa_test_gen.py.
+Make sure the test data has been generated beforehand using `qa_test_gen.py`.
+
+
+
+**(4) Inference**
+
+You can conduct inference with:
+
+```bash
+# NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1
+CUDA_VISIBLE_DEVICES=2,3,4,5 python infer_vllm.py \
+--question [YOUR_QUESTION] \
+--model_path [YOUR_MODEL_PATH] \
+--api_base [YOUR_API_BASE] \
+--api_key [YOUR_API_KEY]
+```
+
+
+
+## 🎯Configure Your Own LLM Routing Pool
+
+- **Step-1** 
+
+    + Set up your candidate LLM model descriptors in `data_process/prompt_pool.py`.
+
+    + 💡 You can write your own LLM descriptors manually, or use advanced models (e.g., GPT-4o) to generate them automatically. These descriptors capture the strengths, capabilities, or specialization areas of each candidate model, and are used during routing to inform model selection.
+
+- **Step-2**
+
+    + Run `data_process/qa_train_merge.py`, `data_process/qa_test_merge.py`, or `data_process/qa_test_gen.py` as needed to generate new training or test data.
+
+
+- **Step-3**
+
+    + Modify the `check_llm_name` function in `router_r1/llm_agent/route_service.py` to configure your own LLM routing pool parser.
+
+    + You should also update the API_PRICE_1M_TOKENS dictionary in the same file based on the API pricing of your selected models (see [Together API Pricing](https://www.together.ai/pricing) for reference).
+
+
+- **LAST**
+
+    + Remember to set your own API KEY in the `train.sh` script
+
+
+
 
 
 ## Acknowledge

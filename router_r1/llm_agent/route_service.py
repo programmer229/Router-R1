@@ -129,45 +129,50 @@ def request_task(data):
     return q_id, single_response, int(completion_tokens) * API_PRICE_1M_TOKENS[LLM_NAME]
 
 
+def check_llm_name(target_llm):
+    TAU = 0
+    LLM_NAME = ""
+    if "qwen" in target_llm:
+        LLM_NAME = "qwen/qwen2.5-7b-instruct"
+    elif "palmyra" in target_llm or "creative" in target_llm:
+        LLM_NAME = "writer/palmyra-creative-122b"
+    elif "llama" in target_llm:
+        if "70b" in target_llm:
+            LLM_NAME = "meta/llama-3.1-70b-instruct"
+        elif "51b" in target_llm:
+            LLM_NAME = "nvidia/llama-3.1-nemotron-51b-instruct"
+        elif "49b" in target_llm:
+            LLM_NAME = "nvidia/llama-3.3-nemotron-super-49b-v1"
+        elif "8b" in target_llm:
+            if "chatqa" in target_llm:
+                LLM_NAME = "nvidia/llama3-chatqa-1.5-8b"
+            else:
+                LLM_NAME = "meta/llama-3.1-8b-instruct"
+        else:
+            # print("!!!!!!!!!!!LLM Name Error!!!!!!!!!!!", target_llm)
+            LLM_NAME = ""
+    elif "mistral" in target_llm:
+        LLM_NAME = "mistralai/mistral-7b-instruct-v0.3"
+    elif "mixtral" in target_llm:
+        LLM_NAME = "mistralai/mixtral-8x22b-instruct-v0.1"
+    elif "granite" in target_llm:
+        LLM_NAME = "ibm/granite-3.0-8b-instruct"
+    elif "gemma" in target_llm:
+        LLM_NAME = "google/gemma-2-27b-it"
+        TAU = 0.1
+    else:
+        # print("!!!!!!!!!!!LLM Name Error!!!!!!!!!!!", target_llm)
+        LLM_NAME = ""
+
+    return LLM_NAME, TAU
+
+
 def access_routing_pool(queries, api_base, api_key):
     task_args = []
     for q_id, single_query in enumerate(queries):
-        TAU = 0
-        LLM_NAME = ""
         target_llm = single_query.split(":")[0].strip().lower()
         query_text = single_query.split(":")[1]
-        if "qwen" in target_llm:
-            LLM_NAME = "qwen/qwen2.5-7b-instruct"
-        elif "palmyra" in target_llm or "creative" in target_llm:
-            LLM_NAME = "writer/palmyra-creative-122b"
-        elif "llama" in target_llm:
-            if "70b" in target_llm:
-                LLM_NAME = "meta/llama-3.1-70b-instruct"
-            elif "51b" in target_llm:
-                LLM_NAME = "nvidia/llama-3.1-nemotron-51b-instruct"
-            elif "49b" in target_llm:
-                LLM_NAME = "nvidia/llama-3.3-nemotron-super-49b-v1"
-            elif "8b" in target_llm:
-                if "chatqa" in target_llm:
-                    LLM_NAME = "nvidia/llama3-chatqa-1.5-8b"
-                else:
-                    LLM_NAME = "meta/llama-3.1-8b-instruct"
-            else:
-                print("!!!!!!!!!!!LLM Name Error!!!!!!!!!!!", target_llm)
-                LLM_NAME = ""
-        elif "mistral" in target_llm:
-            LLM_NAME = "mistralai/mistral-7b-instruct-v0.3"
-        elif "mixtral" in target_llm:
-            LLM_NAME = "mistralai/mixtral-8x22b-instruct-v0.1"
-        elif "granite" in target_llm:
-            LLM_NAME = "ibm/granite-3.0-8b-instruct"
-        elif "gemma" in target_llm:
-            LLM_NAME = "google/gemma-2-27b-it"
-            TAU = 0.1
-        else:
-            print("!!!!!!!!!!!LLM Name Error!!!!!!!!!!!", target_llm)
-            LLM_NAME = ""
-
+        LLM_NAME, TAU = check_llm_name(target_llm=target_llm)
         task_args.append((q_id, query_text, TAU, LLM_NAME, api_base, api_key))
 
     ret = []

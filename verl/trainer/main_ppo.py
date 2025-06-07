@@ -25,6 +25,8 @@ import numpy as np
 from collections import deque
 import pickle
 
+from router_r1.llm_agent.route_service import check_llm_name
+
 
 PUNISH_REWARD_MAX = -1.0
 PUNISH_REWARD_MEDIUM = -1.0
@@ -70,33 +72,13 @@ def normalize_reward(r):
     return 1.0 - float(np.clip(r_scaled, 0.0, 1.0))
 
 
-def check_llm_name(target_llm):
+def is_valid_llm_name(target_llm):
     target_llm = target_llm.strip().lower()
-    if "qwen" in target_llm:
-        return True
-    elif "palmyra" in target_llm or "creative" in target_llm:
-        return True
-    elif "llama" in target_llm:
-        if "70b" in target_llm:
-            return True
-        elif "51b" in target_llm:
-            return True
-        elif "49b" in target_llm:
-            return True
-        elif "8b" in target_llm:
-            return True
-        else:
-            return False
-    elif "mistral" in target_llm:
-        return True
-    elif "mixtral" in target_llm:
-        return True
-    elif "granite" in target_llm:
-        return True
-    elif "gemma" in target_llm:
-        return True
-    else:
+    LLM_NAME, _ = check_llm_name(target_llm=target_llm)
+    if LLM_NAME == "":
         return False
+    else:
+        return True
 
 
 def format_reward(completion):
@@ -125,7 +107,7 @@ def format_reward(completion):
                 if content.split(":")[-1].strip() == '' or "llm-name" in content.strip().lower() \
                         or "your-query" in content.strip().lower() or content.split(":")[0].strip().lower() in content.split(":")[-1].strip().lower():
                     query_format_punish = True
-                if not check_llm_name(content.split(":")[0]):
+                if not is_valid_llm_name(content.split(":")[0]):
                     llm_name_punish = True
             else:
                 query_format_punish = True
@@ -133,7 +115,7 @@ def format_reward(completion):
             answer_enclose_count += 1
         elif action == "think":
             think_enclose_count += 1
-            if content == "...":
+            if content == "..." or content == "":
                 think_punish = True
         else:
             info_enclose_count += 1
@@ -184,7 +166,7 @@ def route_count(completion):
                 if content.split(":")[
                     -1].strip() == '' or "llm-name" in content.strip().lower() or "your-query" in content.strip().lower():
                     query_format_punish = True
-                if not check_llm_name(content.split(":")[0]):
+                if not is_valid_llm_name(content.split(":")[0]):
                     llm_name_punish = True
             else:
                 query_format_punish = True
