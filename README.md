@@ -8,8 +8,8 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
     <a href="https://ulab-uiuc.github.io/Router-R1">
         <img alt="Build" src="https://img.shields.io/badge/Project-Page-blue">
     </a>
-    <a href="https://arxiv.org/abs/x">
-        <img alt="Build" src="https://img.shields.io/badge/arXiv-xxxx.xxxxx-red?logo=arxiv">
+    <a href="https://arxiv.org/abs/2506.09033">
+        <img alt="Build" src="https://img.shields.io/badge/arXiv-2506.09033-red?logo=arxiv">
     </a>
     <!-- <a href="xxx">
         <img alt="Build" src="https://img.shields.io/badge/Twitter-black?logo=X">
@@ -32,7 +32,7 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 <p align="center">
     <a href="https://ulab-uiuc.github.io/Router-R1/">🌐 Project Page</a> |
-    <a href="https://arxiv.org/abs/xxxx.xxxxx">📜 arXiv</a>
+    <a href="https://arxiv.org/abs/2506.09033">📜 arXiv</a>
     <!-- <a href="xxx">📮 Twitter Post</a> -->
 <p>
 
@@ -46,7 +46,7 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 ## News
 
-**[2025.06.0x]** 🌟 Router-R1 is released.
+**[2025.06]** 🌟 Router-R1 was released.
 
 
 
@@ -181,7 +181,7 @@ We sincerely acknowledge the contributions of [Deepseek-R1](https://github.com/d
 @article{Router-R1,
   title={Router-R1: Teaching LLMs Multi-Round Routing and Aggregation via Reinforcement Learning},
   author={Haozhen Zhang and Tao Feng and Jiaxuan You},
-  journal={arXiv preprint arXiv:xxxx.xxxxx},
+  journal={arXiv preprint arXiv:2506.09033},
   year={2025}
 }
 ```
