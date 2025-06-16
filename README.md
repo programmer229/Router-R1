@@ -168,7 +168,7 @@ CUDA_VISIBLE_DEVICES=2,3,4,5 python infer_vllm.py \
 
 
 
-## Acknowledge
+## Acknowledgement
 
 We sincerely acknowledge the contributions of [Deepseek-R1](https://github.com/deepseek-ai/DeepSeek-R1) and [Search-R1](https://github.com/PeterGriffinJin/Search-R1), whose work has been a valuable source of inspiration. This project builds upon the foundations laid by [veRL](https://github.com/volcengine/verl), and we are deeply grateful for the open-source efforts and advancements made by these communities. 
 
