@@ -11,9 +11,12 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
     <a href="https://arxiv.org/abs/2506.09033">
         <img alt="Build" src="https://img.shields.io/badge/arXiv-2506.09033-red?logo=arxiv">
     </a>
-    <!-- <a href="xxx">
+    <a href="https://huggingface.co/collections/ulab-ai/router-r1-6851bbe099c7a56914b5db03">
+        <img alt="HuggingFace" src="https://img.shields.io/badge/%F0%9F%A4%97-Router--R1-yellow">
+    </a>
+    <a href="https://x.com/haozhen_ntu/status/1933897400302948843">
         <img alt="Build" src="https://img.shields.io/badge/Twitter-black?logo=X">
-    </a> -->
+    </a>
     <a href="https://github.com/ulab-uiuc/Router-R1/blob/master/LICENSE">
         <img alt="License" src="https://img.shields.io/badge/LICENSE-Apache-green">
     </a>
@@ -32,8 +35,9 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 <p align="center">
     <a href="https://ulab-uiuc.github.io/Router-R1/">🌐 Project Page</a> |
-    <a href="https://arxiv.org/abs/2506.09033">📜 arXiv</a>
-    <!-- <a href="xxx">📮 Twitter Post</a> -->
+    <a href="https://arxiv.org/abs/2506.09033">📜 arXiv</a> |
+    <a href="https://huggingface.co/collections/ulab-ai/router-r1-6851bbe099c7a56914b5db03">🤗 Models & Datasets</a> |
+    <a href="https://x.com/haozhen_ntu/status/1933897400302948843">📮 Twitter Post</a>
 <p>
 
 
@@ -46,7 +50,11 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 ## News
 
-**[2025.06]** 🌟 Router-R1 was released.
+**[2025.06]** 📢 We’ve open-sourced the **Router-R1 model weights** along with the **dataset collected for training LLM routers** on Hugging Face: [Router-R1 Collection](https://huggingface.co/collections/ulab-ai/router-r1-6851bbe099c7a56914b5db03). We hope this release will support and accelerate research on LLM routers within the community. For more updates, check out our latest [Twitter post](https://x.com/haozhen_ntu/status/1933897400302948843). Also, don't miss [GraphRouter](https://github.com/ulab-uiuc/GraphRouter) from U Lab — if you're interested in graph-based LLM Routers.
+
+
+
+**[2025.06]** 🌟 **Router-R1** was released.
 
 
 
