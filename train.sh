@@ -5,8 +5,8 @@ WAND_PROJECT='Router-R1-Official'
 
 #export BASE_MODEL='meta-llama/Llama-3.2-3B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
-export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
+export BASE_MODEL='Qwen/Qwen3-4B'
+export EXPERIMENT_NAME=nh-bs64-ppo-qwen3-4b-em
 
 # set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has some issues

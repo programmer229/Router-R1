@@ -17,7 +17,7 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 
 from verl import DataProto
 import torch
-from verl.utils.reward_score import qa_em
+from verl.utils.reward_score import qa_em, gsm8k, math
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 import os
 import re
@@ -178,8 +178,13 @@ def route_count(completion):
 
 
 def _select_rm_score_fn(data_source):
-    if data_source in ['nq', 'triviaqa', 'popqa', 'hotpotqa', '2wikimultihopqa', 'musique', 'bamboogle']:
+    normalized = data_source.lower()
+    if normalized in ['nq', 'triviaqa', 'popqa', 'hotpotqa', '2wikimultihopqa', 'musique', 'bamboogle']:
         return qa_em.compute_score_em
+    if normalized in ['openai/gsm8k', 'gsm8k', 'math']:
+        return gsm8k.compute_score
+    if normalized in ['lighteval/math', 'lighteval/math-all', 'hendrycks_math']:
+        return math.compute_score
     else:
         raise NotImplementedError
 

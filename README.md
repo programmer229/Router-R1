@@ -85,7 +85,7 @@ pip install wandb
 The following scripts generate mixed training and testing datasets for Router-R1 by sampling from multiple QA datasets. By default, 7K examples are randomly selected from each of NQ and HotpotQA.
 
 ```bash
-# DATASET Choices: nq, triviaqa, popqa, hotpotqa, 2wikimultihopqa, musique, bamboogle
+# DATASET Choices: nq, triviaqa, popqa, hotpotqa, 2wikimultihopqa, musique, bamboogle, gsm8k (math)
 # MODEL Choices: qwen, llama
 
 # Generate training set (default: 7K from nq + 7K from hotpotqa)
@@ -97,6 +97,9 @@ python data_process/qa_test_merge.py --data_sources nq,hotpotqa --model qwen
 # Generate test set
 python data_process/qa_test_gen.py --data_sources nq --model qwen
 ```
+
+> [!NOTE]
+> Passing `gsm8k` (alias: `math`) to `--data_sources` enables math-format data preparation. The generated prompts include the `####` answer formatting hint, and the resulting parquet stores math ground truth in the format expected by the GSM8K reward.
 
 **(2) Training**
 

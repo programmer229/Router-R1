@@ -25,8 +25,11 @@ import numpy as np
 
 
 def select_reward_fn(data_source):
-    if data_source == 'lighteval/MATH':
+    normalized = data_source.lower()
+    if normalized in ['lighteval/math', 'hendrycks_math']:
         return math.compute_score
+    if normalized in ['openai/gsm8k', 'gsm8k', 'math']:
+        return gsm8k.compute_score
     else:
         raise NotImplementedError
 
