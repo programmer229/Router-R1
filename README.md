@@ -52,7 +52,7 @@ Official implementation of NeurIPS'25 Poster: Router-R1: Teaching LLMs Multi-Rou
 
 
 
-**[2025.09]** 🎉 Router-R1 was accepted by NeurIPS'25!
+**[2025.09]** 🎉 **Router-R1 was accepted by NeurIPS'25!**
 
 
 
@@ -179,6 +179,12 @@ CUDA_VISIBLE_DEVICES=2,3,4,5 python infer_vllm.py \
     + Remember to set your own API KEY in the `train.sh` script
 
 
+
+## Useful Resources from Other Awesome Works
+
+- [FusionFactory](http://arxiv.org/abs/2507.10540): Fusing LLM Capabilities with Routing Data. [![[code]](https://img.shields.io/github/stars/ulab-uiuc/FusionFactory)](https://github.com/ulab-uiuc/FusionFactory)
+
+- [CARROT](https://arxiv.org/abs/2502.03261): CARROT: A Cost Aware Rate Optimal Router. [![[code]](https://img.shields.io/github/stars/somerstep/CARROT)](https://github.com/somerstep/CARROT)
 
 
 
