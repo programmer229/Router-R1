@@ -1,7 +1,7 @@
 # Router-R1
 
 
-Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggregation via Reinforcement Learning
+Official implementation of NeurIPS'25 Poster: Router-R1: Teaching LLMs Multi-Round Routing and Aggregation via Reinforcement Learning
 
 
 <p align="center">
@@ -49,6 +49,12 @@ Official implementation of Router-R1: Teaching LLMs Multi-Round Routing and Aggr
 
 
 ## News
+
+
+
+**[2025.09]** 🎉 Router-R1 was accepted by NeurIPS'25!
+
+
 
 **[2025.06]** 📢 We’ve open-sourced the **Router-R1 model weights** along with the **dataset collected for training LLM routers** on Hugging Face: [Router-R1 Collection](https://huggingface.co/collections/ulab-ai/router-r1-6851bbe099c7a56914b5db03). We hope this release will support and accelerate research on LLM routers within the community. For more updates, check out our latest [Twitter post](https://x.com/haozhen_ntu/status/1933897400302948843). Also, don't miss [GraphRouter](https://github.com/ulab-uiuc/GraphRouter) from U Lab — if you're interested in graph-based LLM Routers.
 
