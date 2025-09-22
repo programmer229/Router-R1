@@ -173,13 +173,13 @@ if __name__ == '__main__':
     folder_path = Path(args.local_dir).mkdir(parents=True, exist_ok=True)
 
     for data_source in data_sources:
+        is_math_source = _is_math_source(data_source)
         canonical_source = _canonicalize_source(data_source)
-        is_math_source = _is_math_source(canonical_source)
 
         if is_math_source:
             train_dataset, _ = _load_math_split(canonical_source, ("train",))
         else:
-            dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', data_source)
+            dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', canonical_source)
             train_dataset = dataset['train']
 
         # random sample (cap at dataset size)

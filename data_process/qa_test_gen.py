@@ -169,16 +169,16 @@ if __name__ == '__main__':
 
     last_canonical_source = None
     for data_source in data_sources:
+        is_math_source = _is_math_source(data_source)
         canonical_source = _canonicalize_source(data_source)
         last_canonical_source = canonical_source
-        is_math_source = _is_math_source(canonical_source)
 
         if is_math_source:
             split_priority = ("test", "validation", "train")
             test_dataset, selected_split_name = _load_math_split(canonical_source, split_priority)
             print(f"Using the {canonical_source} {selected_split_name} dataset...")
         else:
-            dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', data_source)
+            dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', canonical_source)
             if 'test' in dataset:
                 selected_split_name = 'test'
                 print(f'Using the {data_source} test dataset...')
