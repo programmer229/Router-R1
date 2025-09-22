@@ -77,7 +77,7 @@ def get_llm_response_via_api(prompt,
 
 
 API_PRICE_1M_TOKENS = {
-    "Qwen/Qwen3-4B": 0.2,
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B": 0.2,
 }
 
 
@@ -126,8 +126,17 @@ def check_llm_name(target_llm):
     TAU = 0
     LLM_NAME = ""
     normalized = target_llm.replace(" ", "")
-    if normalized in {"qwen/qwen3-4b", "qwen3-4b", "qwen3", "qwen3_4b"}:
-        LLM_NAME = "Qwen/Qwen3-4B"
+    if normalized in {
+        "deepseek-ai/deepseek-r1-distill-qwen-32b",
+        "deepseek_ai/deepseek-r1-distill-qwen-32b",
+        "deepseek-r1-distill-qwen-32b",
+        "deepseek_r1_distill_qwen_32b",
+        "deepseekr1distillqwen32b",
+        "deepseek-r1",
+        "deepseek_r1",
+        "deepseek",
+    }:
+        LLM_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
     else:
         LLM_NAME = ""
 
