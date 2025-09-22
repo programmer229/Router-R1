@@ -29,6 +29,7 @@ from prompt_pool import PROMPT_TEMPLATE_QWEN, PROMPT_TEMPLATE_LLAMA
 
 MATH_SOURCE_ALIASES = {"math", "gsm8k", "openai/gsm8k"}
 MATH_CANONICAL_SOURCE = "openai/gsm8k"
+MATH_DATASET_CONFIG = "main"
 MATH_FINAL_ANSWER_PATTERN = re.compile(r"####\s*(.*)")
 MATH_ANSWER_STRIP_RE = re.compile(r"[\s\n]+")
 MATH_INSTRUCTION = 'Please reason step by step and provide the final answer after "####".'
@@ -113,7 +114,7 @@ if __name__ == '__main__':
         is_math_source = canonical_source == MATH_CANONICAL_SOURCE
 
         if is_math_source:
-            dataset = datasets.load_dataset('openai/gsm8k')
+            dataset = datasets.load_dataset(MATH_CANONICAL_SOURCE, MATH_DATASET_CONFIG)
             train_dataset = dataset['train']
         else:
             dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', data_source)
