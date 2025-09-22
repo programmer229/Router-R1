@@ -28,9 +28,29 @@ import argparse
 from prompt_pool import PROMPT_TEMPLATE_QWEN, PROMPT_TEMPLATE_LLAMA
 
 
-MATH_SOURCE_ALIASES = {"math", "gsm8k", "openai/gsm8k"}
-MATH_CANONICAL_SOURCE = "openai/gsm8k"
-MATH_DATASET_CONFIG = "main"
+MATH_DATASETS = {
+    "openai/gsm8k": {
+        "aliases": {"math", "gsm8k", "openai/gsm8k"},
+        "config": "main",
+    },
+    "EleutherAI/hendrycks_math": {
+        "aliases": {"hendrycks", "hendrycks_math", "eleutherai/hendrycks_math"},
+        "configs": (
+            "algebra",
+            "counting_and_probability",
+            "geometry",
+            "intermediate_algebra",
+            "number_theory",
+            "precalculus",
+            "prealgebra",
+        ),
+    },
+}
+MATH_ALIAS_TO_CANONICAL = {}
+for _canonical_name, _spec in MATH_DATASETS.items():
+    MATH_ALIAS_TO_CANONICAL[_canonical_name.lower()] = _canonical_name
+    for _alias in _spec["aliases"]:
+        MATH_ALIAS_TO_CANONICAL[_alias.lower()] = _canonical_name
 MATH_FINAL_ANSWER_PATTERN = re.compile(r"####\s*(.*)")
 MATH_ANSWER_STRIP_RE = re.compile(r"[\s\n]+")
 MATH_INSTRUCTION = 'Please reason step by step and provide the final answer after "####".'
@@ -52,12 +72,53 @@ def make_prefix(dp, llm):
 
 
 def _is_math_source(data_source: str) -> bool:
-    lowered = data_source.lower()
-    return lowered in MATH_SOURCE_ALIASES or data_source == MATH_CANONICAL_SOURCE
+    return data_source.lower() in MATH_ALIAS_TO_CANONICAL
 
 
 def _canonicalize_source(data_source: str) -> str:
-    return MATH_CANONICAL_SOURCE if _is_math_source(data_source) else data_source
+    return MATH_ALIAS_TO_CANONICAL.get(data_source.lower(), data_source)
+
+
+def _load_math_split(canonical_source: str, split_priority):
+    spec = MATH_DATASETS.get(canonical_source)
+    if spec is None:
+        raise ValueError(f"Unsupported math dataset: {canonical_source}")
+
+    if canonical_source == "openai/gsm8k":
+        dataset_dict = datasets.load_dataset(canonical_source, spec["config"])
+        for split_name in split_priority:
+            if split_name in dataset_dict:
+                return dataset_dict[split_name], split_name
+        raise ValueError(f"None of the requested splits {split_priority} are available for {canonical_source}")
+
+    if canonical_source == "EleutherAI/hendrycks_math":
+        selected_splits = []
+        for config in spec["configs"]:
+            dataset_dict = datasets.load_dataset(canonical_source, config)
+            chosen_split = None
+            chosen_split_name = None
+            for split_name in split_priority:
+                if split_name in dataset_dict:
+                    chosen_split = dataset_dict[split_name]
+                    chosen_split_name = split_name
+                    break
+            if chosen_split is None:
+                continue
+            chosen_split = chosen_split.add_column("math_source_config", [config] * len(chosen_split))
+            selected_splits.append((chosen_split, chosen_split_name))
+
+        if not selected_splits:
+            raise ValueError(f"None of the requested splits {split_priority} are available for {canonical_source}")
+
+        if len(selected_splits) == 1:
+            dataset_split, split_name = selected_splits[0]
+            return dataset_split, split_name
+
+        datasets_to_concat = [item[0] for item in selected_splits]
+        selected_split_name = selected_splits[0][1]
+        return datasets.concatenate_datasets(datasets_to_concat), selected_split_name
+
+    raise NotImplementedError(f"Unhandled math dataset: {canonical_source}")
 
 
 def _format_question(raw_question: str, is_math: bool) -> str:
@@ -111,25 +172,24 @@ if __name__ == '__main__':
 
     for data_source in data_sources:
         canonical_source = _canonicalize_source(data_source)
-        is_math_source = canonical_source == MATH_CANONICAL_SOURCE
+        is_math_source = _is_math_source(canonical_source)
 
         if is_math_source:
-            dataset = datasets.load_dataset(MATH_CANONICAL_SOURCE, MATH_DATASET_CONFIG)
-            if 'test' in dataset:
-                print(f'Using the {canonical_source} test dataset...')
-                test_dataset = dataset['test']
-            else:
-                print(f'Using the {canonical_source} validation dataset...')
-                test_dataset = dataset['train']
+            split_priority = ("test", "validation", "train")
+            test_dataset, selected_split_name = _load_math_split(canonical_source, split_priority)
+            print(f"Using the {canonical_source} {selected_split_name} dataset...")
         else:
             dataset = datasets.load_dataset('RUC-NLPIR/FlashRAG_datasets', data_source)
             if 'test' in dataset:
+                selected_split_name = 'test'
                 print(f'Using the {data_source} test dataset...')
                 test_dataset = dataset['test']
             elif 'dev' in dataset:
+                selected_split_name = 'dev'
                 print(f'Using the {data_source} dev dataset...')
                 test_dataset = dataset['dev']
             else:
+                selected_split_name = 'train'
                 print(f'Using the {data_source} train dataset...')
                 test_dataset = dataset['train']
 
@@ -148,7 +208,8 @@ if __name__ == '__main__':
                 question = make_prefix({"question": question_text}, llm=model_name)
 
                 if is_math_source:
-                    solution = _extract_math_ground_truth(example.get('answer', ''))
+                    raw_answer = example.get('answer', '') or example.get('solution', '')
+                    solution = _extract_math_ground_truth(raw_answer)
                 else:
                     solution = {
                         "target": example['golden_answers'],
@@ -170,11 +231,15 @@ if __name__ == '__main__':
                         'index': idx,
                     }
                 }
+                if is_math_source:
+                    math_subject = example.get('math_source_config')
+                    if math_subject:
+                        data["extra_info"]["math_subject"] = math_subject
                 return data
 
             return process_fn
 
-        test_dataset = test_dataset.map(function=make_map_fn('test'), with_indices=True)
+        test_dataset = test_dataset.map(function=make_map_fn(selected_split_name), with_indices=True)
         all_dataset.append(test_dataset)
 
     local_dir = args.local_dir
