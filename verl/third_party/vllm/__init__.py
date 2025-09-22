@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from importlib.metadata import version, PackageNotFoundError
+import warnings
 
 
 def get_version(pkg):
@@ -25,27 +26,46 @@ def get_version(pkg):
 package_name = 'vllm'
 package_version = get_version(package_name)
 
-if package_version == '0.3.1':
+SUPPORTED_VERSION_MAP = {
+    '0.3.1': '0.3.1',
+    '0.4.2': '0.4.2',
+    '0.5.1': '0.5.4',  # 0.5.1 is API-compatible with the 0.5.4 shim we vendor
+    '0.5.4': '0.5.4',
+    '0.6.3': '0.6.3',
+}
+
+canonical_version = SUPPORTED_VERSION_MAP.get(package_version)
+
+if canonical_version is None:
+    supported_versions = ', '.join(sorted(SUPPORTED_VERSION_MAP.keys()))
+    raise ValueError(
+        f'vllm version {package_version} not supported. Currently supported versions are {supported_versions}.'
+    )
+
+if canonical_version != package_version:
+    warnings.warn(
+        f"vllm version {package_version} detected; using compatibility shim for {canonical_version}.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
+if canonical_version == '0.3.1':
     vllm_version = '0.3.1'
     from .vllm_v_0_3_1.llm import LLM
     from .vllm_v_0_3_1.llm import LLMEngine
     from .vllm_v_0_3_1 import parallel_state
-elif package_version == '0.4.2':
+elif canonical_version == '0.4.2':
     vllm_version = '0.4.2'
     from .vllm_v_0_4_2.llm import LLM
     from .vllm_v_0_4_2.llm import LLMEngine
     from .vllm_v_0_4_2 import parallel_state
-elif package_version == '0.5.4':
+elif canonical_version == '0.5.4':
     vllm_version = '0.5.4'
     from .vllm_v_0_5_4.llm import LLM
     from .vllm_v_0_5_4.llm import LLMEngine
     from .vllm_v_0_5_4 import parallel_state
-elif package_version == '0.6.3':
+elif canonical_version == '0.6.3':
     vllm_version = '0.6.3'
     from .vllm_v_0_6_3.llm import LLM
     from .vllm_v_0_6_3.llm import LLMEngine
     from .vllm_v_0_6_3 import parallel_state
-else:
-    raise ValueError(
-        f'vllm version {package_version} not supported. Currently supported versions are 0.3.1, 0.4.2, 0.5.4 and 0.6.3.'
-    )
