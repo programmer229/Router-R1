@@ -183,7 +183,7 @@ def _select_rm_score_fn(data_source):
         return qa_em.compute_score_em
     if normalized in ['openai/gsm8k', 'gsm8k', 'math']:
         return gsm8k.compute_score
-    if normalized in ['lighteval/math', 'lighteval/math-all', 'hendrycks_math']:
+    if normalized in ['lighteval/math', 'lighteval/math-all', 'hendrycks_math', 'eleutherai/hendrycks_math']:
         return math.compute_score
     else:
         raise NotImplementedError
