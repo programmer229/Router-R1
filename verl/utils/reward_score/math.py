@@ -14,18 +14,48 @@
 # Adapted from https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/tasks/hendrycks_math/utils.py
 
 
-def compute_score(solution_str, ground_truth) -> float:
-    retval = 0.
+def compute_score(solution_str,
+                  ground_truth,
+                  method='strict',
+                  format_score=None,
+                  score=1.,
+                  api_cost=0.0,
+                  state=None,
+                  reward_metric='em',
+                  cost_coe=0.0):
+    """Math reward helper supporting both simple and rich call signatures."""
+
+    del method  # retained for signature parity
+    del reward_metric
+
+    if format_score is None:
+        format_score = 0.0
+
+    is_correct = 0.0
     try:
         string_in_last_boxed = last_boxed_only_string(solution_str)
         if string_in_last_boxed is not None:
             answer = remove_boxed(string_in_last_boxed)
             if is_equiv(answer, ground_truth):
-                retval = 1.
+                is_correct = float(score)
     except Exception as e:
         print(e)
 
-    return retval
+    if state is None:
+        return is_correct
+
+    if format_score == -1.0:
+        reward_val = format_score
+    else:
+        if is_correct > 0:
+            reward_val = (is_correct + format_score) * (1.0 - cost_coe) + api_cost * cost_coe
+        else:
+            reward_val = format_score
+
+    if state == 'train':
+        return is_correct, api_cost, reward_val
+
+    return is_correct, is_correct, api_cost, reward_val
 
 
 # string normalization from https://github.com/EleutherAI/lm-evaluation-harness/blob/master/lm_eval/tasks/hendrycks_math.py
