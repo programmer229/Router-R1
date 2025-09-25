@@ -67,8 +67,8 @@ PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 python3 -m verl.trainer.
     trainer.default_hdfs_dir=null \
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
-    trainer.save_freq=15 \
-    trainer.test_freq=15 \
+    trainer.save_freq=1 \
+    trainer.test_freq=1 \
     trainer.project_name=$WAND_PROJECT \
     trainer.experiment_name=$EXPERIMENT_NAME \
     trainer.total_epochs=100 \

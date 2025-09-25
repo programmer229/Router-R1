@@ -16,8 +16,10 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import json
 import os
 import uuid
+from datetime import datetime
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -380,6 +382,116 @@ class RayPPOTrainer(object):
                           default_backend=self.config.trainer.logger,
                           config=OmegaConf.to_container(self.config, resolve=True))
 
+    def _init_validation_logging(self):
+        if hasattr(self, '_validation_log_path') and self._validation_log_path is not None:
+            return
+
+        base_dir = getattr(self.config.trainer, 'default_local_dir', None)
+        if base_dir is None:
+            base_dir = os.path.join(os.getcwd(), 'validation_logs')
+        else:
+            base_dir = os.path.join(os.path.abspath(os.path.expanduser(base_dir)), 'validation_logs')
+
+        os.makedirs(base_dir, exist_ok=True)
+        self._validation_log_path = os.path.join(base_dir, 'validation_completions.jsonl')
+
+    @staticmethod
+    def _serialize_for_json(value):
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, (list, tuple)):
+            return [RayPPOTrainer._serialize_for_json(v) for v in value]
+        if isinstance(value, dict):
+            return {k: RayPPOTrainer._serialize_for_json(v) for k, v in value.items()}
+        if isinstance(value, np.ndarray):
+            return [RayPPOTrainer._serialize_for_json(v) for v in value.tolist()]
+        return str(value)
+
+    def _log_validation_batch(self,
+                              batch: DataProto,
+                              reward_tensor,
+                              cost_tensor,
+                              metric_em_tensor,
+                              metric_f1_tensor,
+                              route_tensor):
+        self._init_validation_logging()
+
+        prompts_tensor = batch.batch.get('prompts')
+        responses_tensor = batch.batch.get('responses')
+
+        if prompts_tensor is None or responses_tensor is None:
+            return
+
+        prompts = self.tokenizer.batch_decode(prompts_tensor.detach().cpu().tolist(), skip_special_tokens=False)
+        completions = self.tokenizer.batch_decode(responses_tensor.detach().cpu().tolist(), skip_special_tokens=False)
+
+        def _reduce(tensor):
+            if isinstance(tensor, torch.Tensor):
+                tensor = tensor.detach().cpu()
+                if tensor.dim() > 1:
+                    tensor = tensor.sum(dim=-1)
+                return tensor.tolist()
+            if isinstance(tensor, np.ndarray):
+                if tensor.ndim > 1:
+                    tensor = tensor.sum(axis=-1)
+                return tensor.tolist()
+            if isinstance(tensor, list):
+                return tensor
+            return []
+
+        rewards = _reduce(reward_tensor)
+        costs = _reduce(cost_tensor)
+        metric_ems = _reduce(metric_em_tensor)
+        metric_f1s = _reduce(metric_f1_tensor)
+        route_counts = _reduce(route_tensor)
+
+        data_sources = batch.non_tensor_batch.get('data_source')
+        if isinstance(data_sources, np.ndarray):
+            data_sources = data_sources.tolist()
+        if data_sources is None:
+            data_sources = ['unknown'] * len(prompts)
+
+        global_step = getattr(self, 'global_steps', 0)
+        timestamp = datetime.utcnow().isoformat() + 'Z'
+
+        records = []
+        for idx, (prompt, completion) in enumerate(zip(prompts, completions)):
+            record = {
+                'timestamp': timestamp,
+                'step': global_step,
+                'index': idx,
+                'data_source': data_sources[idx] if idx < len(data_sources) else 'unknown',
+                'prompt': prompt,
+                'completion': completion,
+                'reward': rewards[idx] if idx < len(rewards) else None,
+                'cost': costs[idx] if idx < len(costs) else None,
+                'metric_em': metric_ems[idx] if idx < len(metric_ems) else None,
+                'metric_f1': metric_f1s[idx] if idx < len(metric_f1s) else None,
+                'route_count': route_counts[idx] if idx < len(route_counts) else None,
+            }
+
+            extra_fields = {}
+            for key, values in batch.non_tensor_batch.items():
+                if key == 'data_source':
+                    continue
+                if isinstance(values, np.ndarray) and idx < len(values):
+                    extra_fields[key] = self._serialize_for_json(values[idx])
+                elif isinstance(values, list) and idx < len(values):
+                    extra_fields[key] = self._serialize_for_json(values[idx])
+            if extra_fields:
+                record['extra_fields'] = extra_fields
+
+            records.append(record)
+
+        if not records:
+            return
+
+        with open(self._validation_log_path, 'a', encoding='utf-8') as log_file:
+            for record in records:
+                log_file.write(json.dumps(record, ensure_ascii=True) + '\n')
+
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
         # TODO: we have to make sure the batch size is divisible by the dp size
@@ -508,6 +620,15 @@ class RayPPOTrainer(object):
                 # for certain reward function (e.g. sandbox), the generation can overlap with reward
                 metric_em_tensor, metric_f1_tensor, cost_tensor, reward_tensor, route_tensor = self.val_reward_fn(test_batch)
 
+                self._log_validation_batch(
+                    batch=test_batch,
+                    reward_tensor=reward_tensor,
+                    cost_tensor=cost_tensor,
+                    metric_em_tensor=metric_em_tensor,
+                    metric_f1_tensor=metric_f1_tensor,
+                    route_tensor=route_tensor,
+                )
+
                 route_tensor_lst.append(route_tensor)
                 reward_tensor_lst.append(reward_tensor)
                 cost_tensor_lst.append(cost_tensor)
@@ -545,6 +666,15 @@ class RayPPOTrainer(object):
                     # evaluate using reward_function
                     # for certain reward function (e.g. sandbox), the generation can overlap with reward
                     metric_em_tensor, metric_f1_tensor, cost_tensor, reward_tensor, route_tensor = self.val_reward_fn(test_batch)
+
+                    self._log_validation_batch(
+                        batch=test_batch,
+                        reward_tensor=reward_tensor,
+                        cost_tensor=cost_tensor,
+                        metric_em_tensor=metric_em_tensor,
+                        metric_f1_tensor=metric_f1_tensor,
+                        route_tensor=route_tensor,
+                    )
 
                     route_tensor_lst.append(route_tensor)
                     reward_tensor_lst.append(reward_tensor)
