@@ -7,6 +7,9 @@ WAND_PROJECT='Router-R1-Official'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
 export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 export EXPERIMENT_NAME=nh-bs64-ppo-deepseek-r1-distill-qwen-7b-em
+export EXPERIMENT_DIR="$(pwd)/verl_checkpoints/${EXPERIMENT_NAME}"
+
+mkdir -p "${EXPERIMENT_DIR}"
 
 # set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has some issues
@@ -74,7 +77,8 @@ PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 python3 -m verl.trainer.
     trainer.total_epochs=100 \
     trainer.total_training_steps=225 \
     trainer.default_hdfs_dir=null \
-    trainer.default_local_dir=verl_checkpoints/$EXPERIMENT_NAME \
+    trainer.default_local_dir=$EXPERIMENT_DIR \
+    reward_model.enable=false \
     max_turns=4 \
     +reward_metric="em" \
     +cost_coe=0.0 \
