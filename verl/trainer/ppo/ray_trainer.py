@@ -394,6 +394,7 @@ class RayPPOTrainer(object):
 
         os.makedirs(base_dir, exist_ok=True)
         self._validation_log_path = os.path.join(base_dir, 'validation_completions.jsonl')
+        print(f"[validation] log path: {self._validation_log_path}")
 
     @staticmethod
     def _serialize_for_json(value):
@@ -422,6 +423,8 @@ class RayPPOTrainer(object):
         responses_tensor = batch.batch.get('responses')
 
         if prompts_tensor is None or responses_tensor is None:
+            available_keys = list(batch.batch.keys())
+            print(f"[validation] missing prompts/responses, keys={available_keys}")
             return
 
         prompts = self.tokenizer.batch_decode(prompts_tensor.detach().cpu().tolist(), skip_special_tokens=False)
@@ -491,6 +494,7 @@ class RayPPOTrainer(object):
         with open(self._validation_log_path, 'a', encoding='utf-8') as log_file:
             for record in records:
                 log_file.write(json.dumps(record, ensure_ascii=True) + '\n')
+        print(f"[validation] wrote {len(records)} records to {self._validation_log_path}")
 
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
