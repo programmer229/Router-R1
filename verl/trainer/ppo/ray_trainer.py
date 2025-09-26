@@ -427,8 +427,26 @@ class RayPPOTrainer(object):
             print(f"[validation] missing prompts/responses, keys={available_keys}")
             return
 
-        prompts = self.tokenizer.batch_decode(prompts_tensor.detach().cpu().tolist(), skip_special_tokens=False)
-        completions = self.tokenizer.batch_decode(responses_tensor.detach().cpu().tolist(), skip_special_tokens=False)
+        prompts = self.tokenizer.batch_decode(
+            prompts_tensor.detach().cpu().tolist(),
+            skip_special_tokens=False)
+
+        completions = []
+        pad_token_id = self.tokenizer.pad_token_id
+        for response_ids in responses_tensor.detach().cpu():
+            if pad_token_id is not None:
+                # trim trailing padding/eos tokens to avoid logging only special tokens
+                valid_length = (response_ids != pad_token_id).sum().item()
+                if valid_length == 0:
+                    completions.append('')
+                    continue
+                response_ids = response_ids[:valid_length]
+            completions.append(
+                self.tokenizer.decode(
+                    response_ids.tolist(),
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                ))
 
         def _reduce(tensor):
             if isinstance(tensor, torch.Tensor):
