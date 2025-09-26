@@ -491,6 +491,7 @@ class RayPPOTrainer(object):
         if not records:
             return
 
+        os.makedirs(os.path.dirname(self._validation_log_path), exist_ok=True)
         with open(self._validation_log_path, 'a', encoding='utf-8') as log_file:
             for record in records:
                 log_file.write(json.dumps(record, ensure_ascii=True) + '\n')
