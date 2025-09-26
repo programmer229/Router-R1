@@ -51,7 +51,7 @@ for _canonical_name, _spec in MATH_DATASETS.items():
         MATH_ALIAS_TO_CANONICAL[_alias.lower()] = _canonical_name
 MATH_FINAL_ANSWER_PATTERN = re.compile(r"####\s*(.*)")
 MATH_ANSWER_STRIP_RE = re.compile(r"[\s\n]+")
-MATH_INSTRUCTION = 'Please reason step by step and provide the final answer after "####".'
+MATH_INSTRUCTION = ''
 
 random.seed(42)
 
@@ -121,7 +121,7 @@ def _load_math_split(canonical_source: str, split_priority):
 def _format_question(raw_question: str, is_math: bool) -> str:
     question = raw_question.strip()
     if is_math:
-        if '####' not in question:
+        if '####' not in question and MATH_INSTRUCTION:
             question = f"{question}\n\n{MATH_INSTRUCTION}"
         return question
     if question and question[-1] != '?':
