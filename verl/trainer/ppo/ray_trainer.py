@@ -427,26 +427,27 @@ class RayPPOTrainer(object):
             print(f"[validation] missing prompts/responses, keys={available_keys}")
             return
 
-        prompts = self.tokenizer.batch_decode(
-            prompts_tensor.detach().cpu().tolist(),
-            skip_special_tokens=False)
-
-        completions = []
         pad_token_id = self.tokenizer.pad_token_id
-        for response_ids in responses_tensor.detach().cpu():
-            if pad_token_id is not None:
-                # trim trailing padding/eos tokens to avoid logging only special tokens
-                valid_length = (response_ids != pad_token_id).sum().item()
-                if valid_length == 0:
-                    completions.append('')
-                    continue
-                response_ids = response_ids[:valid_length]
-            completions.append(
-                self.tokenizer.decode(
-                    response_ids.tolist(),
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=False,
-                ))
+
+        def _decode_batch(sequence_tensor, *, skip_special_tokens: bool) -> list[str]:
+            decoded = []
+            for token_ids in sequence_tensor.detach().cpu():
+                if pad_token_id is not None:
+                    valid_length = (token_ids != pad_token_id).sum().item()
+                    if valid_length == 0:
+                        decoded.append('')
+                        continue
+                    token_ids = token_ids[:valid_length]
+                decoded.append(
+                    self.tokenizer.decode(
+                        token_ids.tolist(),
+                        skip_special_tokens=skip_special_tokens,
+                        clean_up_tokenization_spaces=False,
+                    ))
+            return decoded
+
+        prompts = _decode_batch(prompts_tensor, skip_special_tokens=True)
+        completions = _decode_batch(responses_tensor, skip_special_tokens=True)
 
         def _reduce(tensor):
             if isinstance(tensor, torch.Tensor):
