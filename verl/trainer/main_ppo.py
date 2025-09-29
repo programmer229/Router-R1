@@ -178,7 +178,7 @@ def route_count(completion):
 
 
 def _select_rm_score_fn(data_source):
-    if data_source in ['nq', 'triviaqa', 'popqa', 'hotpotqa', '2wikimultihopqa', 'musique', 'bamboogle']:
+    if data_source in ['nq', 'triviaqa', 'popqa', 'hotpotqa', '2wikimultihopqa', 'musique', 'bamboogle', 'hendrycks_math']:
         return qa_em.compute_score_em
     else:
         raise NotImplementedError
