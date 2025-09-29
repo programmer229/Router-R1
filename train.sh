@@ -5,9 +5,9 @@ WAND_PROJECT='Router-R1-Official'
 
 #export BASE_MODEL='meta-llama/Llama-3.2-3B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
+#export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
-
+export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 # set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has some issues
 
@@ -68,7 +68,7 @@ PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 python3 -m verl.trainer.
     trainer.n_gpus_per_node=4 \
     trainer.nnodes=1 \
     trainer.save_freq=15 \
-    trainer.test_freq=15 \
+    trainer.test_freq=1 \
     trainer.project_name=$WAND_PROJECT \
     trainer.experiment_name=$EXPERIMENT_NAME \
     trainer.total_epochs=100 \
@@ -78,6 +78,6 @@ PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 python3 -m verl.trainer.
     max_turns=4 \
     +reward_metric="em" \
     +cost_coe=0.0 \
-    +api_base="[YOU_API_BASE]" \
-    +api_key="[YOU_API_KEY]" \
+    +api_base="http://127.0.0.1:8001/v1" \
+    +api_key=["key"] \
     2>&1 | tee $EXPERIMENT_NAME.log
