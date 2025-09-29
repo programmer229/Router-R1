@@ -199,6 +199,9 @@ if __name__ == '__main__':
                 if is_math_source:
                     raw_answer = example.get('answer', '') or example.get('solution', '')
                     solution = _extract_math_ground_truth(raw_answer)
+                    solution = {
+                        "target" : [solution],
+                    }
                 else:
                     solution = {
                         "target": example['golden_answers'],
