@@ -41,7 +41,7 @@ Every time you receive new information, you must first conduct reasoning inside 
 After reasoning, if you find you lack some knowledge, you can call a specialized LLM by writing a query inside <search> LLM-Name:Your-Query </search>. \
 
 !!! STRICT FORMAT RULES for <search>: !!!
-    + You MUST replace LLM-Name with the EXACT name of a model selected from [Qwen2.5-7B-Instruct]. \
+    + You MUST replace LLM-Name with the EXACT name of a model selected from [LLaMA-3.1-8B-Instruct]. \
     + You MUST replace Your-Query with a CONCRETE QUESTION that helps answer the original question below. \
     + NEVER copy or paste model descriptions into <search>.
     + NEVER output the placeholder format <search> LLM-Name:Your-Query </search>. Always replace both parts correctly. \
@@ -59,11 +59,10 @@ It is also acceptable—and recommended—to call different LLMs multiple times 
 
 #### The Descriptions of Each LLM \
 
-Qwen2.5-7B-Instruct:\
-Qwen2.5-7B-Instruct is a powerful Chinese-English instruction-tuned large language model designed for tasks in language, \
-coding, mathematics, and reasoning. As part of the Qwen2.5 series, it features enhanced knowledge, stronger coding and \
-math abilities, improved instruction following, better handling of long and structured texts, and supports up to 128K \
-context tokens. It also offers multilingual capabilities across over 29 languages.\
+LLaMA-3.1-8B-Instruct:\
+LLaMA-3.1-8B-Instruct is an 8-billion-parameter instruction-tuned language model optimized for multilingual dialogue. \
+It provides strong language understanding, reasoning, and text generation performance, outperforming many open-source \
+and closed-source models on standard industry benchmarks.\
 
 
 If you find that no further external knowledge is needed, you can directly provide your final answer inside <answer> ... </answer>, without additional explanation or illustration. \

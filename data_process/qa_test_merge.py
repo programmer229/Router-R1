@@ -45,6 +45,14 @@ MATH_DATASETS = {
             "prealgebra",
         ),
     },
+    "nlile/hendrycks-MATH-benchmark": {
+        "aliases": {
+            "hendrycks-math-benchmark",
+            "hendrycks_math_benchmark",
+            "math-benchmark",
+            "nlile/hendrycks-math-benchmark",
+        },
+    },
 }
 MATH_ALIAS_TO_CANONICAL = {}
 for _canonical_name, _spec in MATH_DATASETS.items():
@@ -117,6 +125,15 @@ def _load_math_split(canonical_source: str, split_priority):
         datasets_to_concat = [item[0] for item in selected_splits]
         selected_split_name = selected_splits[0][1]
         return datasets.concatenate_datasets(datasets_to_concat), selected_split_name
+
+    if canonical_source == "nlile/hendrycks-MATH-benchmark":
+        dataset_dict = datasets.load_dataset(canonical_source)
+        for split_name in split_priority:
+            if split_name in dataset_dict:
+                return dataset_dict[split_name], split_name
+        raise ValueError(
+            f"None of the requested splits {split_priority} are available for {canonical_source}"
+        )
 
     raise NotImplementedError(f"Unhandled math dataset: {canonical_source}")
 
@@ -235,9 +252,15 @@ if __name__ == '__main__':
                     }
                 }
                 if is_math_source:
-                    math_subject = example.get('math_source_config')
+                    math_subject = example.get('math_source_config') or example.get('subject')
                     if math_subject:
                         data["extra_info"]["math_subject"] = math_subject
+                    math_level = example.get('level')
+                    if math_level is not None:
+                        data["extra_info"]["math_level"] = math_level
+                    math_unique_id = example.get('unique_id') or example.get('id')
+                    if math_unique_id:
+                        data["extra_info"]["math_unique_id"] = math_unique_id
                 return data
 
             return process_fn
