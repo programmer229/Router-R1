@@ -16,6 +16,14 @@ import re
 import string
 import random
 from collections import Counter
+from typing import Optional
+
+try:
+    from latex2sympy2 import latex2sympy
+    import sympy
+except ImportError:  # pragma: no cover - optional dependency
+    latex2sympy = None
+    sympy = None
 
 def normalize_answer(s):
     def remove_articles(text):
@@ -40,6 +48,9 @@ def em_check(prediction, golden_answers):
     normalized_prediction = normalize_answer(prediction)
     score = 0
     for golden_answer in golden_answers:
+        if _math_equivalent(prediction, golden_answer):
+            score = 1
+            break
         golden_answer = normalize_answer(golden_answer)
         if golden_answer == normalized_prediction:
             score = 1
@@ -81,6 +92,53 @@ def extract_solution(solution_str):
     
     # If there are 2 or more matches, return the last one
     return matches[-1].group(1).strip()
+
+
+def _clean_latex(expr: str) -> str:
+    cleaned = expr.strip()
+    if not cleaned:
+        return cleaned
+    cleaned = cleaned.strip('$')
+    cleaned = cleaned.replace('\\,', '').replace('\\!', '')
+    cleaned = cleaned.replace('\u2009', '')  # thin space
+    cleaned = cleaned.replace('\\left', '').replace('\\right', '')
+    cleaned = re.sub(r'\\text\s*\{([^}]*)\}', r'\1', cleaned)
+    cleaned = re.sub(r'\\operatorname\s*\{([^}]*)\}', r'\1', cleaned)
+    return cleaned
+
+
+def _to_sympy(expr: str) -> Optional['sympy.Expr']:
+    if latex2sympy is None or sympy is None:
+        return None
+    if not isinstance(expr, str):
+        return None
+    cleaned = _clean_latex(expr)
+    if not cleaned:
+        return None
+    try:
+        return latex2sympy(cleaned)
+    except Exception:
+        try:
+            return sympy.sympify(cleaned)
+        except Exception:
+            return None
+
+
+def _math_equivalent(prediction: str, golden_answer: str) -> bool:
+    pred_expr = _to_sympy(prediction)
+    gold_expr = _to_sympy(golden_answer)
+    if pred_expr is None or gold_expr is None:
+        return False
+    try:
+        diff = sympy.simplify(pred_expr - gold_expr)
+        if diff == 0:
+            return True
+    except Exception:
+        pass
+    try:
+        return bool(pred_expr.equals(gold_expr))
+    except Exception:
+        return False
 
 
 def f1_score(prediction: str, ground_truth: str):
@@ -147,6 +205,9 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
                     golden_answers = [golden_answers]
                 score = 0
                 for golden_answer in golden_answers:
+                    if _math_equivalent(answer, golden_answer):
+                        score = 1
+                        break
                     f1 = f1_score(answer, golden_answer)
                     if f1 > score:
                         score = f1
@@ -181,6 +242,9 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
                 golden_answers = [golden_answers]
             score_f1 = 0
             for golden_answer in golden_answers:
+                if _math_equivalent(answer, golden_answer):
+                    score_f1 = 1
+                    break
                 f1 = f1_score(answer, golden_answer)
                 if f1 > score_f1:
                     score_f1 = f1
