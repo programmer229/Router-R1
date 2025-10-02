@@ -1,6 +1,6 @@
 import torch
 import re
-from collections import defaultdict
+from collections import deque
 import os
 from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
@@ -60,12 +60,18 @@ class LLMGenerationManager:
             skip_special_tokens=True
         )
 
-        responses_str = [resp.split('</search>')[0] + '</search>'
-                 if '</search>' in resp
-                 else resp.split('</answer>')[0] + '</answer>'
-                 if '</answer>' in resp
-                 else resp
-                 for resp in responses_str]
+        processed_responses = []
+        for resp in responses_str:
+            if '</answer>' in resp:
+                cutoff = resp.index('</answer>') + len('</answer>')
+                processed_responses.append(resp[:cutoff])
+            elif '</search>' in resp:
+                cutoff = resp.rindex('</search>') + len('</search>')
+                processed_responses.append(resp[:cutoff])
+            else:
+                processed_responses.append(resp)
+
+        responses_str = processed_responses
 
 
         if self.config.no_think_rl:
@@ -361,108 +367,141 @@ class LLMGenerationManager:
 
     def execute_predictions(self, predictions: List[str], pad_token: str, active_mask=None, do_route=True) -> List[str]:
         """
-        Execute predictions across multiple environments.
-        NOTE: the function is the actual `step` function in the environment
-        NOTE penalty_for_invalid is not included in observation shown to the LLM
-        
-        Args:
-            envs: List of environment instances
-            predictions: List of action predictions
-            pad_token: Token to use for padding
-            
-        Returns:
-            List of observation strings
+        Execute a batch of LLM predictions against the environment.
+
+        Supports multiple `<search>` blocks per prediction by sequentially
+        routing each query and accumulating the associated observations.
         """
-        cur_actions, contents = self.postprocess_predictions(predictions)
-        next_obs, dones, valid_action, is_route, cur_completion_tokens = [], [], [], [], []
-        
-        route_queries = [content for action, content in zip(cur_actions, contents) if action == 'search']
-        if do_route:
-            route_results, completion_tokens_list = self.batch_route(route_queries)
-            assert len(route_results) == sum([1 for action in cur_actions if action == 'search'])
-            assert len(route_results) == len(completion_tokens_list)
+        action_sequences = self.postprocess_predictions(predictions)
+        batch_size = len(action_sequences)
+
+        if active_mask is None:
+            active_mask_list = [True] * batch_size
+        elif isinstance(active_mask, torch.Tensor):
+            active_mask_list = [bool(x) for x in active_mask.tolist()]
         else:
-            route_results = [''] * sum([1 for action in cur_actions if action == 'search'])
-            completion_tokens_list = [0.0] * sum([1 for action in cur_actions if action == 'search'])
+            active_mask_list = [bool(x) for x in active_mask]
 
-        for i, (action, active) in enumerate(zip(cur_actions, active_mask)):
-            
+        next_obs_segments = [[] for _ in range(batch_size)]
+        dones = [0] * batch_size
+        valid_action_counts = [0] * batch_size
+        route_counts = [0] * batch_size
+        completion_tokens_totals = [0.0] * batch_size
+
+        action_queues = [deque(seq) for seq in action_sequences]
+
+        # Immediate handling for inactive trajectories
+        for idx, active in enumerate(active_mask_list):
             if not active:
-                next_obs.append('')
-                dones.append(1)
-                valid_action.append(0)
-                is_route.append(0)
-                cur_completion_tokens.append(0.0)
-            else:
-                if action == 'answer':
-                    next_obs.append('')
-                    dones.append(1)
-                    valid_action.append(1)
-                    is_route.append(0)
-                    cur_completion_tokens.append(0.0)
-                elif action == 'search':
-                    if route_results[0].strip().lower() == "llm name error":
-                        next_obs.append(f'\n\n<information>None</information>\n\n')
-                        route_results.pop(0)
-                        valid_action.append(0)
-                    elif route_results[0].strip().lower() == "api request error":
-                        next_obs.append(f'\n\n<information>None</information>\n\n')
-                        route_results.pop(0)
-                        valid_action.append(0)
-                    else:
-                        next_obs.append(f'\n\n<information>{route_results.pop(0).strip()}</information>\n\n')
-                        valid_action.append(1)
-                    dones.append(0)
-                    is_route.append(1)
-                    cur_completion_tokens.append(completion_tokens_list.pop(0))
-                else:
-                    next_obs.append('')
-                    dones.append(0)
-                    valid_action.append(0)
-                    is_route.append(0)
-                    cur_completion_tokens.append(0.0)
-            
-        assert len(route_results) == 0
-        assert len(completion_tokens_list) == 0
-            
-        return next_obs, dones, valid_action, is_route, cur_completion_tokens
+                dones[idx] = 1
+                action_queues[idx].clear()
 
-    def postprocess_predictions(self, predictions: List[Any]) -> Tuple[List[int], List[bool]]:
-        """
-        Process (text-based) predictions from llm into actions and validity flags.
-        
-        Args:
-            predictions: List of raw predictions
-            
-        Returns:
-            Tuple of (actions list, validity flags list)
-        """
-        actions = []
-        contents = []
-                
-        for prediction in predictions:
-            if isinstance(prediction, str): # for llm output
-                pattern = r'<(search|answer)>(.*?)</\1>'
-                match = re.search(pattern, prediction, re.DOTALL)
-                if match:
-                    content = match.group(2).strip()  # Return only the content inside the tags
-                    action = match.group(1)
-                    if action == "search" and ("llm-name" in content.strip().lower() or "your-query" in content.strip().lower()):
-                        action = "route invalid-1"
-                    elif action == "search" and ":" not in content:
-                        action = "route invalid-2"
-                    elif action == "search" and content.strip().lower().split(":")[-1].strip() == "":
-                        action = "route invalid-3"
-                else:
-                    content = ''
-                    action = None
+        # Iteratively process search actions while available
+        while True:
+            search_indices = []
+            search_queries = []
+            for idx, queue in enumerate(action_queues):
+                if not active_mask_list[idx] or not queue:
+                    continue
+                action, content = queue[0]
+                if action == 'search':
+                    queue.popleft()
+                    search_indices.append(idx)
+                    search_queries.append(content)
+
+            if not search_indices:
+                break
+
+            if do_route:
+                route_results, completion_tokens_list = self.batch_route(search_queries)
             else:
+                route_results = [''] * len(search_queries)
+                completion_tokens_list = [0.0] * len(search_queries)
+
+            for offset, idx in enumerate(search_indices):
+                result = route_results[offset]
+                tokens = completion_tokens_list[offset]
+
+                result_str = '' if result is None else str(result)
+                tokens = float(tokens)
+
+                route_counts[idx] += 1
+                completion_tokens_totals[idx] += tokens
+
+                lowered = result_str.strip().lower()
+                if lowered in {"llm name error", "api request error"}:
+                    next_obs_segments[idx].append('\n\n<information>None</information>\n\n')
+                    # invalid route attempt does not increase valid_action_counts
+                else:
+                    next_obs_segments[idx].append(f'\n\n<information>{result_str.strip()}</information>\n\n')
+                    valid_action_counts[idx] += 1
+
+        # Process remaining non-search actions (answers / invalid attempts)
+        for idx, queue in enumerate(action_queues):
+            if not active_mask_list[idx]:
+                continue
+
+            while queue:
+                action, content = queue.popleft()
+
+                if action == 'answer':
+                    dones[idx] = 1
+                    valid_action_counts[idx] += 1
+                    break
+                if action.startswith('route invalid'):
+                    # Invalid route specification: mark trajectory as still active but do not add information
+                    break
+                if action == 'noop':
+                    break
+                # Unknown action: ignore and continue checking remaining items
+
+        next_obs = [''.join(segments) for segments in next_obs_segments]
+
+        return next_obs, dones, valid_action_counts, route_counts, completion_tokens_totals
+
+    def postprocess_predictions(self, predictions: List[Any]) -> List[List[Tuple[str, str]]]:
+        """
+        Process text predictions into an ordered list of (action, content) tuples for each sample.
+
+        Args:
+            predictions: raw LLM outputs.
+
+        Returns:
+            For each prediction, an ordered list containing one entry per
+            `<search>`/`<answer>` block (after basic validation).
+        """
+        pattern = re.compile(r'<(search|answer)>(.*?)</\1>', re.DOTALL)
+        sequences: List[List[Tuple[str, str]]] = []
+
+        for prediction in predictions:
+            if not isinstance(prediction, str):
                 raise ValueError(f"Invalid prediction type: {type(prediction)}")
-            
-            actions.append(action)
-            contents.append(content)
-            
-        return actions, contents
+
+            actions: List[Tuple[str, str]] = []
+            for match in pattern.finditer(prediction):
+                action = match.group(1)
+                content = match.group(2).strip()
+
+                if action == 'search':
+                    lowered = content.strip().lower()
+                    if 'llm-name' in lowered or 'your-query' in lowered:
+                        actions.append(('route invalid-1', content))
+                        continue
+                    if ':' not in content:
+                        actions.append(('route invalid-2', content))
+                        continue
+                    if lowered.split(':')[-1].strip() == '':
+                        actions.append(('route invalid-3', content))
+                        continue
+
+                actions.append((action, content))
+
+            if not actions:
+                actions.append(('noop', ''))
+
+            sequences.append(actions)
+
+        return sequences
 
     def batch_route(self, queries: List[str] = None) -> str:
         ret = access_routing_pool(queries=queries, api_base=self.config.api_base, api_key=self.config.api_key)

@@ -68,6 +68,18 @@ class DataParallelPPOActor(BasePPOActor):
             attention_mask = micro_batch['attention_mask']
             position_ids = micro_batch['position_ids']
 
+            if batch_size == 0:
+                empty_shape = (0, response_length)
+                empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
+                empty_log_probs = torch.zeros_like(empty_entropy)
+                return empty_entropy, empty_log_probs
+
+            if attention_mask.sum().item() == 0:
+                empty_shape = (batch_size, response_length)
+                empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
+                empty_log_probs = torch.zeros_like(empty_entropy)
+                return empty_entropy, empty_log_probs
+
             if self.use_remove_padding:
                 input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1),
                                                            attention_mask)  # input_ids_rmpad (total_nnz, ...)
