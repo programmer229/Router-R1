@@ -237,6 +237,7 @@ class LLMGenerationManager:
         valid_action_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         valid_route_stats = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.int)
         active_num_list = [active_mask.sum().item()]
+        meta_info = dict(gen_batch.meta_info)
         rollings = gen_batch
 
         # Main generation loop
@@ -247,11 +248,20 @@ class LLMGenerationManager:
                 rollings.batch,
                 keys=['input_ids', 'attention_mask', 'position_ids']
             )
+
+            # Drop trajectories that have no remaining prompt tokens before scheduling generation
+            available_prompt_mask = (rollings.batch['attention_mask'].sum(dim=1) > 0).to(active_mask.device)
+            if torch.any(active_mask & ~available_prompt_mask):
+                active_mask = active_mask & available_prompt_mask
+                active_num_list.append(active_mask.sum().item())
+                if not active_mask.sum().item() > 0:
+                    break
             
             # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
             rollings_active = DataProto.from_dict({
                 k: v[active_mask] for k, v in rollings.batch.items()
             })
+            rollings_active.meta_info.update(rollings.meta_info)
             try:
                 gen_output = self._generate_with_gpu_padding(rollings_active)
             except Exception as e:
@@ -296,32 +306,39 @@ class LLMGenerationManager:
                 keys=['input_ids', 'attention_mask', 'position_ids']
             )
 
-            # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
-            rollings_active = DataProto.from_dict({
-                k: v[active_mask] for k, v in rollings.batch.items()
-            })
-            gen_output = self._generate_with_gpu_padding(rollings_active)
+            available_prompt_mask = (rollings.batch['attention_mask'].sum(dim=1) > 0).to(active_mask.device)
+            if torch.any(active_mask & ~available_prompt_mask):
+                active_mask = active_mask & available_prompt_mask
+                active_num_list.append(active_mask.sum().item())
 
-            meta_info = gen_output.meta_info
-            responses_ids, responses_str = self._postprocess_responses(gen_output.batch['responses'])
-            responses_ids, responses_str = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
+            if active_mask.sum().item() > 0:
+                # gen_output = self.actor_rollout_wg.generate_sequences(rollings)
+                rollings_active = DataProto.from_dict({
+                    k: v[active_mask] for k, v in rollings.batch.items()
+                })
+                rollings_active.meta_info.update(rollings.meta_info)
+                gen_output = self._generate_with_gpu_padding(rollings_active)
 
-            # # Execute in environment and process observations
-            _, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
-                responses_str, self.tokenizer.pad_token, active_mask, do_route=False
-            )
+                meta_info = gen_output.meta_info
+                responses_ids, responses_str = self._postprocess_responses(gen_output.batch['responses'])
+                responses_ids, responses_str = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
 
-            curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
-            active_mask = active_mask * curr_active_mask
-            active_num_list.append(active_mask.sum().item())
-            valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
-            valid_route_stats += torch.tensor(is_route, dtype=torch.int)
-            batch_completion_tokens += torch.tensor(cur_completion_tokens, dtype=torch.float32)
+                # # Execute in environment and process observations
+                _, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
+                    responses_str, self.tokenizer.pad_token, active_mask, do_route=False
+                )
 
-            original_right_side = self._update_right_side(
-                original_right_side,
-                responses_ids,
-            )
+                curr_active_mask = torch.tensor([not done for done in dones], dtype=torch.bool)
+                active_mask = active_mask * curr_active_mask
+                active_num_list.append(active_mask.sum().item())
+                valid_action_stats += torch.tensor(valid_action, dtype=torch.int)
+                valid_route_stats += torch.tensor(is_route, dtype=torch.int)
+                batch_completion_tokens += torch.tensor(cur_completion_tokens, dtype=torch.float32)
+
+                original_right_side = self._update_right_side(
+                    original_right_side,
+                    responses_ids,
+                )
         
         meta_info['turns_stats'] = turns_stats.tolist()
         meta_info['active_mask'] = active_mask.tolist()
