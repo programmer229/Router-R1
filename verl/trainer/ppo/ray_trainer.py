@@ -17,6 +17,7 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import os
+import re
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -371,6 +372,27 @@ class RayPPOTrainer(object):
             self.kl_ctrl = core_algos.FixedKLController(kl_coef=0.)
 
         self._create_dataloader()
+
+        self.resume_from_checkpoint = self.config.trainer.get('resume_from_checkpoint', None)
+        self.resume_global_step = 0
+        self.resume_epoch = 0
+        self.resume_step_in_epoch = 0
+        self.steps_per_epoch = len(self.train_dataloader)
+
+        if self.resume_from_checkpoint:
+            match = re.search(r'global_step_(\d+)', str(self.resume_from_checkpoint))
+            if match:
+                self.resume_global_step = int(match.group(1))
+                if self.steps_per_epoch > 0:
+                    total_epochs = self.config.trainer.total_epochs
+                    self.resume_epoch = min(self.resume_global_step // self.steps_per_epoch, total_epochs)
+                    if self.resume_epoch < total_epochs:
+                        self.resume_step_in_epoch = self.resume_global_step % self.steps_per_epoch
+                    else:
+                        self.resume_step_in_epoch = 0
+            else:
+                print(f"[WARNING] Unable to parse global step from checkpoint path: {self.resume_from_checkpoint}")
+
         self._init_logger()
     
     def _init_logger(self):
@@ -710,7 +732,7 @@ class RayPPOTrainer(object):
         The light-weight advantage computation is done on the driver process.
         """
         logger = self.logger
-        self.global_steps = 0
+        self.global_steps = self.resume_global_step
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
@@ -720,8 +742,11 @@ class RayPPOTrainer(object):
             if self.config.trainer.get('val_only', False):
                 return
 
-        # we start from step 1
-        self.global_steps += 1
+        if self.resume_from_checkpoint and self.global_steps > 0:
+            print(f"Resuming training from global_step {self.global_steps} (epoch {self.resume_epoch}, batch {self.resume_step_in_epoch})")
+            if self.global_steps >= self.total_training_steps:
+                print('[INFO] Checkpoint corresponds to or exceeds configured total training steps; exiting early.')
+                return
 
         # Agent config preparation
         gen_config = GenerationConfig(
@@ -744,8 +769,16 @@ class RayPPOTrainer(object):
         )
 
         # start training loop
-        for epoch in range(self.config.trainer.total_epochs):
-            for batch_dict in self.train_dataloader:
+        start_epoch = self.resume_epoch
+        start_batch_index = self.resume_step_in_epoch if self.resume_epoch < self.config.trainer.total_epochs else 0
+
+        for epoch in range(start_epoch, self.config.trainer.total_epochs):
+            batch_start = start_batch_index if epoch == start_epoch else 0
+            for batch_idx, batch_dict in enumerate(self.train_dataloader):
+                if batch_idx < batch_start:
+                    continue
+
+                self.global_steps += 1
                 print(f'epoch {epoch}, step {self.global_steps}')
                 metrics = {}
                 timing_raw = {}
@@ -901,8 +934,6 @@ class RayPPOTrainer(object):
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
 
-                self.global_steps += 1
-
                 if self.global_steps >= self.total_training_steps:
 
                     # perform validation after training
@@ -911,6 +942,7 @@ class RayPPOTrainer(object):
                         pprint(f'Final validation metrics: {val_metrics}')
                         logger.log(data=val_metrics, step=self.global_steps)
                     return
+            start_batch_index = 0
         
         
     

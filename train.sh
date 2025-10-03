@@ -122,6 +122,7 @@ HYDRA_ARGS=(
 if [[ -n "$LOAD_ACTOR_CKPT" ]]; then
     echo "Auto-loading actor checkpoint from $LOAD_ACTOR_CKPT"
     HYDRA_ARGS+=("+actor_rollout_ref.resume_from_checkpoint=$LOAD_ACTOR_CKPT")
+    HYDRA_ARGS+=("+trainer.resume_from_checkpoint=$LOAD_ACTOR_CKPT")
 fi
 
 if [[ -n "$LOAD_CRITIC_CKPT" ]]; then

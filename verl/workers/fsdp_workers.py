@@ -15,15 +15,19 @@
 The main entry point to run the PPO algorithm
 """
 
+import json
 import logging
 import os
 import warnings
+from pathlib import Path
 
 import torch
 import torch.distributed
 import verl.utils.hdfs_io as hdfs_io
 import verl.utils.torch_functional as verl_F
 from omegaconf import DictConfig, open_dict
+from transformers import modeling_utils
+from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, WEIGHTS_INDEX_NAME, WEIGHTS_NAME
 from verl import DataProto
 from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import register, Dispatch
@@ -43,6 +47,103 @@ from codetiming import Timer
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
 
+
+def _load_state_dict_from_checkpoint_dir(checkpoint_dir: str) -> dict:
+    """Load a full state dict from a checkpoint directory saved via ``save_pretrained``.
+
+    Supports both safetensors and legacy PyTorch formats, including sharded checkpoints.
+    """
+    ckpt_path = Path(checkpoint_dir)
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f'Checkpoint directory {checkpoint_dir} does not exist')
+
+    # Handle sharded safetensor checkpoints
+    safe_index = ckpt_path / SAFE_WEIGHTS_INDEX_NAME
+    if safe_index.exists():
+        with safe_index.open('r') as f:
+            index = json.load(f)
+        shard_files = sorted({fname for fname in index['weight_map'].values()})
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise ImportError('safetensors is required to load safetensor checkpoints') from exc
+        state_dict = {}
+        for shard in shard_files:
+            shard_path = ckpt_path / shard
+            state_dict.update(load_file(str(shard_path)))
+        return state_dict
+
+    # Handle sharded PyTorch checkpoints
+    torch_index = ckpt_path / WEIGHTS_INDEX_NAME
+    if torch_index.exists():
+        shard_files, _ = modeling_utils.get_checkpoint_shard_files(ckpt_path, str(torch_index))
+        state_dict = {}
+        for shard in shard_files:
+            state_dict.update(torch.load(shard, map_location='cpu'))
+        return state_dict
+
+    # Single-file checkpoints (safetensors preferred)
+    single_safe_candidates = [SAFE_WEIGHTS_NAME, 'model.safetensors', 'pytorch_model.safetensors']
+    for candidate in single_safe_candidates:
+        candidate_path = ckpt_path / candidate
+        if candidate_path.exists():
+            try:
+                from safetensors.torch import load_file
+            except ImportError as exc:  # pragma: no cover - optional dependency
+                raise ImportError('safetensors is required to load safetensor checkpoints') from exc
+            return load_file(str(candidate_path))
+
+    single_torch_candidates = [WEIGHTS_NAME]
+    for candidate in single_torch_candidates:
+        candidate_path = ckpt_path / candidate
+        if candidate_path.exists():
+            return torch.load(str(candidate_path), map_location='cpu')
+
+    # Fallback to shard globbing
+    shard_bins = sorted(ckpt_path.glob('pytorch_model-*.bin'))
+    if shard_bins:
+        state_dict = {}
+        for shard in shard_bins:
+            state_dict.update(torch.load(str(shard), map_location='cpu'))
+        return state_dict
+
+    shard_safe = sorted(ckpt_path.glob('model-*.safetensors'))
+    if shard_safe:
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise ImportError('safetensors is required to load safetensor checkpoints') from exc
+        state_dict = {}
+        for shard in shard_safe:
+            state_dict.update(load_file(str(shard)))
+        return state_dict
+
+    raise FileNotFoundError(f'Could not locate model weights inside {checkpoint_dir}')
+
+
+def _maybe_load_weights(module: torch.nn.Module,
+                        checkpoint_dir: str,
+                        description: str,
+                        rank: int,
+                        strict: bool = True) -> None:
+    """Load weights into ``module`` if a checkpoint directory is provided."""
+    if not checkpoint_dir:
+        return
+
+    try:
+        state_dict = _load_state_dict_from_checkpoint_dir(checkpoint_dir)
+    except (FileNotFoundError, ImportError) as exc:
+        if rank == 0:
+            print(f'[{description}] Unable to load checkpoint from {checkpoint_dir}: {exc}')
+        return
+
+    missing_keys, unexpected_keys = module.load_state_dict(state_dict, strict=strict)
+    if rank == 0:
+        print(f'Loaded {description} checkpoint from {checkpoint_dir}')
+        if missing_keys:
+            print(f'[{description}] Missing keys while loading checkpoint: {missing_keys}')
+        if unexpected_keys:
+            print(f'[{description}] Unexpected keys while loading checkpoint: {unexpected_keys}')
 
 class ActorRolloutRefWorker(Worker):
     """
@@ -311,6 +412,12 @@ class ActorRolloutRefWorker(Worker):
 
             # get the original unwrapped module
             self.actor_module = self.actor_module_fsdp._fsdp_wrapped_module
+
+            resume_path = self.config.get('resume_from_checkpoint', None)
+            if self._is_actor and resume_path:
+                _maybe_load_weights(self.actor_module, resume_path, 'actor', self.rank, strict=False)
+                torch.cuda.empty_cache()
+            torch.distributed.barrier()
 
             if self._is_offload_param:
                 # param is require during state_dict in sharding manager
@@ -699,6 +806,12 @@ class CriticWorker(Worker):
         from verl.workers.critic import DataParallelPPOCritic
         self.critic_module, self.critic_optimizer, self.critic_lr_scheduler = self._build_critic_model_optimizer(
             self.config)
+
+        resume_path = self.config.get('resume_from_checkpoint', None)
+        if resume_path:
+            _maybe_load_weights(self.critic_module._fsdp_wrapped_module, resume_path, 'critic', self.rank, strict=False)
+            torch.cuda.empty_cache()
+        torch.distributed.barrier()
 
         if self._is_offload_param:
             offload_fsdp_param_and_grad(module=self.critic_module, offload_grad=self._is_offload_grad)
