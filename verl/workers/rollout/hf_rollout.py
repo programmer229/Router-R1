@@ -41,6 +41,8 @@ class HFRollout(BaseRollout):
 
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         batch_size = prompts.batch.batch_size[0]
+        if batch_size == 0:
+            return self._build_empty_generation(prompts)
         num_chunks = max(batch_size // self.config.get('micro_batch_size', batch_size), 1)
         batch_prompts = prompts.chunk(chunks=num_chunks)
         output = [self._generate_minibatch(p) for p in batch_prompts]
@@ -59,6 +61,12 @@ class HFRollout(BaseRollout):
 
         batch_size = idx.size(0)
         prompt_length = idx.size(1)
+
+        if batch_size == 0:
+            return self._build_empty_generation(
+                prompts,
+                response_length=prompts.meta_info.get('response_length', self.config.response_length)
+            )
 
         self.module.eval()
         param_ctx = contextlib.nullcontext()
@@ -138,3 +146,57 @@ class HFRollout(BaseRollout):
 
         self.module.train()
         return DataProto(batch=batch)
+
+    def _build_empty_generation(self, prompts: DataProto, response_length: int = None) -> DataProto:
+        """Create an empty generation result that matches the expected schema."""
+        idx = prompts.batch['input_ids']
+        attention_mask = prompts.batch['attention_mask']
+        position_ids = prompts.batch['position_ids']
+
+        batch_size = idx.size(0)
+        prompt_length = idx.size(1)
+
+        if response_length is None:
+            response_length = prompts.meta_info.get('response_length', self.config.response_length)
+
+        device = idx.device
+        pad_token_id = prompts.meta_info['pad_token_id']
+
+        response = torch.full(
+            (batch_size, response_length),
+            pad_token_id,
+            dtype=idx.dtype,
+            device=device,
+        )
+
+        seq = torch.cat((idx, response), dim=1)
+
+        if prompt_length > 0 and response_length > 0:
+            last_position = position_ids[:, -1:]
+            delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)
+            delta_position_id = delta_position_id.unsqueeze(0).repeat(batch_size, 1)
+            response_position_ids = last_position + delta_position_id
+        else:
+            response_position_ids = torch.zeros(
+                (batch_size, response_length),
+                dtype=position_ids.dtype,
+                device=position_ids.device,
+            )
+
+        full_position_ids = torch.cat((position_ids, response_position_ids), dim=1)
+
+        response_attention_mask = attention_mask.new_zeros((batch_size, response_length))
+        full_attention_mask = torch.cat((attention_mask, response_attention_mask), dim=1)
+
+        batch = TensorDict(
+            {
+                'prompts': idx,
+                'responses': response,
+                'input_ids': seq,
+                'attention_mask': full_attention_mask,
+                'position_ids': full_position_ids,
+            },
+            batch_size=batch_size,
+        )
+
+        return DataProto(batch=batch, meta_info=dict(prompts.meta_info))

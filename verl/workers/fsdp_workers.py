@@ -453,7 +453,7 @@ class ActorRolloutRefWorker(Worker):
 
             output = self.rollout_sharding_manager.postprocess_data(output)
 
-        if self._is_actor and recompute_log_prob:
+        if self._is_actor and recompute_log_prob and len(output) > 0:
             # we should always recompute old_log_probs when it is HybridEngine
             output.meta_info['micro_batch_size'] = self.config.rollout.log_prob_micro_batch_size
             output.meta_info['max_token_len'] = self.config.rollout.log_prob_max_token_len_per_gpu
@@ -465,6 +465,18 @@ class ActorRolloutRefWorker(Worker):
                 old_log_probs = self.actor.compute_log_prob(data=output)
                 output.batch['old_log_probs'] = old_log_probs
                 output = self.ulysses_sharding_manager.postprocess_data(output)
+        elif self._is_actor and recompute_log_prob:
+            responses = output.batch['responses'] if 'responses' in output.batch.keys() else None
+            if responses is not None:
+                empty_old_log_probs = torch.zeros(
+                    responses.shape[0],
+                    responses.shape[1],
+                    dtype=torch.float32,
+                    device=responses.device,
+                )
+            else:
+                empty_old_log_probs = torch.zeros((0, 0), dtype=torch.float32)
+            output.batch['old_log_probs'] = empty_old_log_probs
 
         output = output.to('cpu')
 
