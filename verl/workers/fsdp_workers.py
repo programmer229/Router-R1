@@ -23,6 +23,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 import verl.utils.hdfs_io as hdfs_io
 import verl.utils.torch_functional as verl_F
 from omegaconf import DictConfig, open_dict
@@ -138,6 +139,9 @@ def _maybe_load_weights(module: torch.nn.Module,
         return
 
     missing_keys, unexpected_keys = module.load_state_dict(state_dict, strict=strict)
+    for submodule in module.modules():
+        if isinstance(submodule, FSDP):
+            submodule._reset_lazy_init()
     if rank == 0:
         print(f'Loaded {description} checkpoint from {checkpoint_dir}')
         if missing_keys:
