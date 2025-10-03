@@ -3,9 +3,9 @@ export DATA_DIR='data/nq_search'
 
 WAND_PROJECT='Router-R1-Official'
 
-#export BASE_MODEL='meta-llama/Llama-3.2-3B-Instruct'
+export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
+#export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
 #export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 # set -x
@@ -18,8 +18,8 @@ export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has som
 # Attention: DataLoader is set to drop_last=True by default, please set data.val_batch_size to a reasonable value.
 
 PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 python3 -m verl.trainer.main_ppo \
-    data.train_files=$DATA_DIR/train_nh_qwen.parquet \
-    data.val_files=$DATA_DIR/test_nh_qwen.parquet \
+    data.train_files=$DATA_DIR/train_nh_llama.parquet \
+    data.val_files=$DATA_DIR/test_nh_llama.parquet \
     data.train_data_num=null \
     data.val_data_num=null \
     data.train_batch_size=64 \
