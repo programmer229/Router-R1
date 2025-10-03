@@ -20,10 +20,10 @@ export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has som
 # Attention: DataLoader is set to drop_last=True by default, please set data.val_batch_size to a reasonable value.
 
 find_latest_checkpoint() {
+
     local ckpt_dir="$1"
     local latest_path=""
     local latest_step=-1
-
     [[ -d "$ckpt_dir" ]] || return
 
     shopt -s nullglob
@@ -44,9 +44,12 @@ find_latest_checkpoint() {
     done
     shopt -u nullglob
 
-    [[ -n "$latest_path" ]] && printf '%s' "$latest_path"
-}
+    if [[ -n "$latest_path" ]]; then
+        printf '%s' "$latest_path"
+    fi
 
+    return 0
+}
 CHECKPOINT_ROOT="verl_checkpoints/$EXPERIMENT_NAME"
 ACTOR_CKPT_DIR="$CHECKPOINT_ROOT/actor"
 CRITIC_CKPT_DIR="$CHECKPOINT_ROOT/critic"
@@ -54,8 +57,12 @@ CRITIC_CKPT_DIR="$CHECKPOINT_ROOT/critic"
 mkdir -p "$ACTOR_CKPT_DIR" "$CRITIC_CKPT_DIR"
 
 LOAD_ACTOR_CKPT="$(find_latest_checkpoint "$ACTOR_CKPT_DIR")"
+
 LOAD_CRITIC_CKPT="$(find_latest_checkpoint "$CRITIC_CKPT_DIR")"
 
+if [[ -z "$LOAD_ACTOR_CKPT" && -z "$LOAD_CRITIC_CKPT" ]]; then
+    echo "No existing checkpoints found. Starting training from scratch." >&2
+fi
 HYDRA_ARGS=(
     "data.train_files=$DATA_DIR/train_nh_qwen.parquet"
     "data.val_files=$DATA_DIR/test_nh_qwen.parquet"
@@ -134,6 +141,9 @@ if [[ -n "$LOAD_CRITIC_CKPT" ]]; then
     echo "Auto-loading critic checkpoint from $LOAD_CRITIC_CKPT"
     HYDRA_ARGS+=("+critic.resume_from_checkpoint=$LOAD_CRITIC_CKPT")
 fi
+
+echo "Launching training with arguments:" >&2
+printf '  %q\n' python3 -m verl.trainer.main_ppo "${HYDRA_ARGS[@]}" >&2
 
 PYTHONUNBUFFERED=1 NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 \
 python3 -m verl.trainer.main_ppo "${HYDRA_ARGS[@]}" \
