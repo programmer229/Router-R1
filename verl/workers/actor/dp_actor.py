@@ -16,6 +16,8 @@ Single Process Actor
 """
 
 import itertools
+import logging
+import os
 from typing import Iterable, Tuple
 
 import torch
@@ -32,6 +34,10 @@ from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 import verl.utils.torch_functional as verl_F
 
 from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
 
 __all__ = ['DataParallelPPOActor']
 
@@ -62,23 +68,28 @@ class DataParallelPPOActor(BasePPOActor):
             log_probs: # (bs, response_len)
         """
         response_length = micro_batch['responses'].size(-1)
+        input_ids = micro_batch['input_ids']
+        batch_size, seqlen = input_ids.shape
+        attention_mask = micro_batch['attention_mask']
+        position_ids = micro_batch['position_ids']
+
+        if batch_size == 0 or seqlen == 0 or attention_mask.numel() == 0:
+            logger.debug('Skipping micro-batch forward: batch_size=%s, seqlen=%s, mask_numel=%s',
+                         batch_size, seqlen, attention_mask.numel())
+            empty_shape = (batch_size, response_length)
+            empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
+            empty_log_probs = torch.zeros_like(empty_entropy)
+            return empty_entropy, empty_log_probs
+
+        if attention_mask.sum().item() == 0:
+            logger.debug('Skipping micro-batch forward: attention mask sum=0 (batch_size=%s, seqlen=%s)',
+                         batch_size, seqlen)
+            empty_shape = (batch_size, response_length)
+            empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
+            empty_log_probs = torch.zeros_like(empty_entropy)
+            return empty_entropy, empty_log_probs
+
         with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
-            input_ids = micro_batch['input_ids']
-            batch_size, seqlen = input_ids.shape
-            attention_mask = micro_batch['attention_mask']
-            position_ids = micro_batch['position_ids']
-
-            if batch_size == 0:
-                empty_shape = (0, response_length)
-                empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
-                empty_log_probs = torch.zeros_like(empty_entropy)
-                return empty_entropy, empty_log_probs
-
-            if attention_mask.sum().item() == 0:
-                empty_shape = (batch_size, response_length)
-                empty_entropy = torch.zeros(empty_shape, device=input_ids.device, dtype=torch.float32)
-                empty_log_probs = torch.zeros_like(empty_entropy)
-                return empty_entropy, empty_log_probs
 
             if self.use_remove_padding:
                 input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1),
@@ -194,8 +205,33 @@ class DataParallelPPOActor(BasePPOActor):
             # split using dynamic bsz
             max_token_len = data.meta_info['max_token_len'] * self.ulysses_sequence_parallel_size
             micro_batches, indices = rearrange_micro_batches(batch=batch, max_token_len=max_token_len)
+            filtered_micro_batches = []
+            filtered_indices = []
+            skipped = 0
+            for micro_batch, idx in zip(micro_batches, indices):
+                if len(micro_batch) == 0:
+                    skipped += 1
+                    continue
+                filtered_micro_batches.append(micro_batch)
+                filtered_indices.append(idx)
+            micro_batches = filtered_micro_batches
+            indices = filtered_indices
+            if skipped > 0:
+                logger.debug('Filtered %s empty micro-batches during dynamic split (original=%s)',
+                             skipped, len(micro_batches) + skipped)
         else:
-            micro_batches = batch.split(micro_batch_size)
+            micro_splits = list(batch.split(micro_batch_size))
+            skipped = sum(1 for micro_batch in micro_splits if len(micro_batch) == 0)
+            micro_batches = [micro_batch for micro_batch in micro_splits if len(micro_batch) > 0]
+            if skipped > 0:
+                logger.debug('Filtered %s empty micro-batches during fixed split (original=%s)',
+                             skipped, len(micro_splits))
+
+        if len(micro_batches) == 0:
+            empty_shape = (len(batch), batch['responses'].shape[-1])
+            device = batch['responses'].device
+            logger.warning('No valid micro-batches found; returning zeros (batch_size=%s)', len(batch))
+            return torch.zeros(empty_shape, device=device, dtype=torch.float32)
 
         log_probs_lst = []
         for micro_batch in micro_batches:

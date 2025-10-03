@@ -3,6 +3,7 @@ set -euo pipefail
 
 export CUDA_VISIBLE_DEVICES=2,3,4,5
 export DATA_DIR='data/nq_search'
+export VERL_PPO_LOGGING_LEVEL=DEBUG
 
 WAND_PROJECT='Router-R1-Official'
 
