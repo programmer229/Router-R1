@@ -51,6 +51,8 @@ CHECKPOINT_ROOT="verl_checkpoints/$EXPERIMENT_NAME"
 ACTOR_CKPT_DIR="$CHECKPOINT_ROOT/actor"
 CRITIC_CKPT_DIR="$CHECKPOINT_ROOT/critic"
 
+mkdir -p "$ACTOR_CKPT_DIR" "$CRITIC_CKPT_DIR"
+
 LOAD_ACTOR_CKPT="$(find_latest_checkpoint "$ACTOR_CKPT_DIR")"
 LOAD_CRITIC_CKPT="$(find_latest_checkpoint "$CRITIC_CKPT_DIR")"
 
