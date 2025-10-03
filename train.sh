@@ -6,9 +6,9 @@ export DATA_DIR='data/nq_search'
 
 WAND_PROJECT='Router-R1-Official'
 
-export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
+#export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-#export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
+export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
 #export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 # set -x
@@ -64,8 +64,8 @@ if [[ -z "$LOAD_ACTOR_CKPT" && -z "$LOAD_CRITIC_CKPT" ]]; then
     echo "No existing checkpoints found. Starting training from scratch." >&2
 fi
 HYDRA_ARGS=(
-    "data.train_files=$DATA_DIR/train_nh_qwen.parquet"
-    "data.val_files=$DATA_DIR/test_nh_qwen.parquet"
+    "data.train_files=$DATA_DIR/train_nh_llama.parquet"
+    "data.val_files=$DATA_DIR/test_nh_llama.parquet"
     "data.train_data_num=null"
     "data.val_data_num=null"
     "data.train_batch_size=64"
