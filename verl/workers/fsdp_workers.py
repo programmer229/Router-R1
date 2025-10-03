@@ -145,6 +145,35 @@ def _maybe_load_weights(module: torch.nn.Module,
         if unexpected_keys:
             print(f'[{description}] Unexpected keys while loading checkpoint: {unexpected_keys}')
 
+
+def _maybe_load_optimizer(checkpoint_dir: str,
+                          optimizer: torch.optim.Optimizer,
+                          scheduler,
+                          description: str,
+                          rank: int) -> None:
+    if optimizer is None or not checkpoint_dir:
+        return
+
+    optimizer_path = Path(checkpoint_dir) / 'optimizer.pt'
+    scheduler_path = Path(checkpoint_dir) / 'scheduler.pt'
+
+    if optimizer_path.exists():
+        state = torch.load(str(optimizer_path), map_location='cpu')
+        optimizer.load_state_dict(state)
+        if rank == 0:
+            print(f'Loaded {description} optimizer state from {optimizer_path}')
+    else:
+        if rank == 0:
+            print(f'[{description}] Optimizer state not found at {optimizer_path}')
+
+    if scheduler is not None and scheduler_path.exists():
+        scheduler_state = torch.load(str(scheduler_path), map_location='cpu')
+        scheduler.load_state_dict(scheduler_state)
+        if rank == 0:
+            print(f'Loaded {description} scheduler state from {scheduler_path}')
+    elif scheduler is not None and rank == 0:
+        print(f'[{description}] Scheduler state not found at {scheduler_path}')
+
 class ActorRolloutRefWorker(Worker):
     """
     This worker can be instantiated as a standalone actor or a standalone rollout or a standalone reference policy
@@ -416,6 +445,13 @@ class ActorRolloutRefWorker(Worker):
             resume_path = self.config.get('resume_from_checkpoint', None)
             if self._is_actor and resume_path:
                 _maybe_load_weights(self.actor_module, resume_path, 'actor', self.rank, strict=False)
+                _maybe_load_optimizer(resume_path,
+                                      self.actor_optimizer,
+                                      self.actor_lr_scheduler,
+                                      'actor',
+                                      self.rank)
+                if self.actor_optimizer is not None:
+                    load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
                 torch.cuda.empty_cache()
             torch.distributed.barrier()
 
@@ -632,6 +668,8 @@ class ActorRolloutRefWorker(Worker):
             load_fsdp_param_and_grad(module=self.actor_module_fsdp,
                                      device_id=torch.cuda.current_device(),
                                      load_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
 
         # TODO: support DCP and save sharded checkpoints
         import torch.distributed
@@ -644,6 +682,10 @@ class ActorRolloutRefWorker(Worker):
             os.makedirs(local_path, exist_ok=True)
             self.actor_module.save_pretrained(local_path, state_dict=state_dict)
             self.tokenizer.save_pretrained(local_path)
+            if self.actor_optimizer is not None:
+                torch.save(self.actor_optimizer.state_dict(), os.path.join(local_path, 'optimizer.pt'))
+            if self.actor_lr_scheduler is not None:
+                torch.save(self.actor_lr_scheduler.state_dict(), os.path.join(local_path, 'scheduler.pt'))
             if hdfs_path is not None:
                 print(f'Uploading actor checkpoint to {hdfs_path}')
                 hdfs_io.makedirs(hdfs_path, exist_ok=True)
@@ -652,6 +694,8 @@ class ActorRolloutRefWorker(Worker):
         torch.distributed.barrier()
         if self._is_offload_param:
             offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            offload_fsdp_optimizer(optimizer=self.actor_optimizer)
 
 
 class CriticWorker(Worker):
@@ -809,7 +853,18 @@ class CriticWorker(Worker):
 
         resume_path = self.config.get('resume_from_checkpoint', None)
         if resume_path:
-            _maybe_load_weights(self.critic_module._fsdp_wrapped_module, resume_path, 'critic', self.rank, strict=False)
+            _maybe_load_weights(self.critic_module._fsdp_wrapped_module,
+                                resume_path,
+                                'critic',
+                                self.rank,
+                                strict=False)
+            _maybe_load_optimizer(resume_path,
+                                  self.critic_optimizer,
+                                  self.critic_lr_scheduler,
+                                  'critic',
+                                  self.rank)
+            if self.critic_optimizer is not None:
+                load_fsdp_optimizer(optimizer=self.critic_optimizer, device_id=torch.cuda.current_device())
             torch.cuda.empty_cache()
         torch.distributed.barrier()
 
@@ -895,6 +950,8 @@ class CriticWorker(Worker):
             load_fsdp_param_and_grad(module=self.critic_module,
                                      device_id=torch.cuda.current_device(),
                                      load_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            load_fsdp_optimizer(optimizer=self.critic_optimizer, device_id=torch.cuda.current_device())
 
         # TODO: support DCP and save sharded checkpoints
         import torch.distributed
@@ -907,6 +964,10 @@ class CriticWorker(Worker):
             os.makedirs(local_path, exist_ok=True)
             self.critic_module._fsdp_wrapped_module.save_pretrained(local_path, state_dict=state_dict)
             self.tokenizer.save_pretrained(local_path)
+            if self.critic_optimizer is not None:
+                torch.save(self.critic_optimizer.state_dict(), os.path.join(local_path, 'optimizer.pt'))
+            if self.critic_lr_scheduler is not None:
+                torch.save(self.critic_lr_scheduler.state_dict(), os.path.join(local_path, 'scheduler.pt'))
             if hdfs_path is not None:
                 print(f'Uploading critic checkpoint to {hdfs_path}')
                 hdfs_io.makedirs(hdfs_path, exist_ok=True)
@@ -915,6 +976,8 @@ class CriticWorker(Worker):
         torch.distributed.barrier()
         if self._is_offload_param:
             offload_fsdp_param_and_grad(module=self.critic_module, offload_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            offload_fsdp_optimizer(optimizer=self.critic_optimizer)
 
 
 # TODO(sgm): we may need to extract it to dp_reward_model.py

@@ -6,16 +6,16 @@ export DATA_DIR='data/nq_search'
 
 WAND_PROJECT='Router-R1-Official'
 
-export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
+export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-#export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
+#export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
 export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
 #export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 # set -x
 export VLLM_ATTENTION_BACKEND=XFORMERS # vllm + qwen2-7b with flash_attn has some issues
 
-#data.train_files=$DATA_DIR/train_nh_llama.parquet \
-#data.val_files=$DATA_DIR/test_nh_llama.parquet \
+#data.train_files=$DATA_DIR/train_nh_qwen.parquet \
+#data.val_files=$DATA_DIR/test_nh_qwen.parquet \
 
 # Attention: DataLoader is set to drop_last=True by default, please set data.val_batch_size to a reasonable value.
 
@@ -55,8 +55,8 @@ LOAD_ACTOR_CKPT="$(find_latest_checkpoint "$ACTOR_CKPT_DIR")"
 LOAD_CRITIC_CKPT="$(find_latest_checkpoint "$CRITIC_CKPT_DIR")"
 
 HYDRA_ARGS=(
-    "data.train_files=$DATA_DIR/train_nh_llama.parquet"
-    "data.val_files=$DATA_DIR/test_nh_llama.parquet"
+    "data.train_files=$DATA_DIR/train_nh_qwen.parquet"
+    "data.val_files=$DATA_DIR/test_nh_qwen.parquet"
     "data.train_data_num=null"
     "data.val_data_num=null"
     "data.train_batch_size=64"
@@ -123,6 +123,9 @@ if [[ -n "$LOAD_ACTOR_CKPT" ]]; then
     echo "Auto-loading actor checkpoint from $LOAD_ACTOR_CKPT"
     HYDRA_ARGS+=("+actor_rollout_ref.resume_from_checkpoint=$LOAD_ACTOR_CKPT")
     HYDRA_ARGS+=("+trainer.resume_from_checkpoint=$LOAD_ACTOR_CKPT")
+elif [[ -n "$LOAD_CRITIC_CKPT" ]]; then
+    echo "Auto-loading trainer state from critic checkpoint $LOAD_CRITIC_CKPT"
+    HYDRA_ARGS+=("+trainer.resume_from_checkpoint=$LOAD_CRITIC_CKPT")
 fi
 
 if [[ -n "$LOAD_CRITIC_CKPT" ]]; then
