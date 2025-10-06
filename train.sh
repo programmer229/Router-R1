@@ -9,7 +9,7 @@ WAND_PROJECT='Router-R1-Official'
 
 #export BASE_MODEL='Qwen/Qwen2.5-3B-Instruct'
 #export EXPERIMENT_NAME=nh-bs64-ppo-llama3.2-3b-it-em
-export BASE_MODEL='meta-llama/Llama-3.1-8B-Instruct'
+export BASE_MODEL='meta-llama/Llama-3.2-1B-Instruct'
 export EXPERIMENT_NAME=nh-bs64-ppo-qwen2.5-3b-it-em
 #export BASE_MODEL='deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'
 # set -x
@@ -69,8 +69,8 @@ HYDRA_ARGS=(
     "data.val_files=$DATA_DIR/test_nh_llama.parquet"
     "data.train_data_num=null"
     "data.val_data_num=null"
-    "data.train_batch_size=64"
-    "data.val_batch_size=64"
+    "data.train_batch_size=32"
+    "data.val_batch_size=32"
     "data.max_prompt_length=4096"
     "data.max_response_length=1024"
     "data.max_start_length=2048"
