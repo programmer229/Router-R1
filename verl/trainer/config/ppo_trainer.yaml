@@ -147,10 +147,11 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   no_think_rl: False
+  enable_reference_policy: false
   kl_penalty: kl  # how to estimate kl divergence
   kl_ctrl:
     type: fixed
-    kl_coef: 0.001
+    kl_coef: 0.0
   state_masking:
     start_state_marker: "<information>"
     end_state_marker: "</information>"

@@ -194,82 +194,49 @@ def compute_score_em(solution_str, ground_truth, method='strict', format_score=0
 
     if state == "train":
         if answer is None:
-            if format_score == -1.0:
-                return 0, api_cost, format_score
-            else:
-                return 0, api_cost, format_score * (1.0 - cost_coe)
-        else:
-            if reward_metric == "f1":
-                golden_answers = ground_truth['target']
-                if isinstance(golden_answers, str):
-                    golden_answers = [golden_answers]
-                score = 0
-                for golden_answer in golden_answers:
-                    if _math_equivalent(answer, golden_answer):
-                        score = 1
-                        break
-                    f1 = f1_score(answer, golden_answer)
-                    if f1 > score:
-                        score = f1
+            return 0.0, api_cost, 0.0
 
-                if format_score == -1.0:
-                    return score, api_cost, format_score
-                else:
-                    if score == 0:
-                        return score, api_cost, score + format_score
-                    else:
-                        return score, api_cost, (score + format_score) * (1.0 - cost_coe) + api_cost * cost_coe
-            else:
-                if em_check(answer, ground_truth['target']):
-                    if format_score == -1.0:
-                        return score, api_cost, format_score
-                    else:
-                        return score, api_cost, (score + format_score) * (1.0 - cost_coe) + api_cost * cost_coe
-                else:
-                    if format_score == -1.0:
-                        return format_score, api_cost, format_score
-                    else:
-                        return format_score, api_cost, format_score
-    else:
-        if answer is None:
-            if format_score == -1.0:
-                return 0, 0, api_cost, format_score
-            else:
-                return 0, 0, api_cost, format_score
-        else:
+        if reward_metric == "f1":
             golden_answers = ground_truth['target']
             if isinstance(golden_answers, str):
                 golden_answers = [golden_answers]
-            score_f1 = 0
+            score = 0.0
             for golden_answer in golden_answers:
                 if _math_equivalent(answer, golden_answer):
-                    score_f1 = 1
+                    score = 1.0
                     break
                 f1 = f1_score(answer, golden_answer)
-                if f1 > score_f1:
-                    score_f1 = f1
+                if f1 > score:
+                    score = f1
+            return score, api_cost, score
+        else:
+            score = float(em_check(answer, ground_truth['target']))
+            return score, api_cost, score
+    else:
+        if answer is None:
+            return 0.0, 0.0, api_cost, 0.0
 
-            if em_check(answer, ground_truth['target']):
-                score_em = 1.0
-            else:
-                score_em = 0.0
+        golden_answers = ground_truth['target']
+        if isinstance(golden_answers, str):
+            golden_answers = [golden_answers]
 
-            if format_score == -1.0:
-                if reward_metric == "f1":
-                    return score_em, score_f1, api_cost, format_score
-                else:
-                    return score_em, score_f1, api_cost, format_score
-            else:
-                if reward_metric == "f1":
-                    if score_f1 == 0:
-                        return score_em, score_f1, api_cost, score_f1 + format_score
-                    else:
-                        return score_em, score_f1, api_cost, (score_f1 + format_score) * (1.0 - cost_coe) + api_cost * cost_coe
-                else:
-                    if score_em == 0:
-                        return score_em, score_f1, api_cost, score_em + format_score
-                    else:
-                        return score_em, score_f1, api_cost, (score_em + format_score) * (1.0 - cost_coe) + api_cost * cost_coe
+        score_f1 = 0.0
+        for golden_answer in golden_answers:
+            if _math_equivalent(answer, golden_answer):
+                score_f1 = 1.0
+                break
+            f1 = f1_score(answer, golden_answer)
+            if f1 > score_f1:
+                score_f1 = f1
+
+        score_em = float(em_check(answer, ground_truth['target']))
+
+        if reward_metric == "f1":
+            reward_score = score_f1
+        else:
+            reward_score = score_em
+
+        return score_em, score_f1, api_cost, reward_score
 
 
 def compute_score_subem(solution_str, ground_truth, method='strict', format_score=0., score=1.):

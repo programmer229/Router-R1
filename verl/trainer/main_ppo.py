@@ -28,9 +28,9 @@ import pickle
 from router_r1.llm_agent.route_service import check_llm_name
 
 
-PUNISH_REWARD_MAX = -1.0
-PUNISH_REWARD_MEDIUM = -1.0
-PUNISH_REWARD_SMALL = -1.0
+PUNISH_REWARD_MAX = 0.0
+PUNISH_REWARD_MEDIUM = 0.0
+PUNISH_REWARD_SMALL = 0.0
 
 
 window_size = 1000
@@ -234,7 +234,8 @@ class RewardManager():
             # sequences = torch.cat((valid_prompt_ids, valid_response_ids))
             sequences = valid_response_ids
             sequences_str = self.tokenizer.decode(sequences)
-            strict_format_score = format_reward(completion=sequences_str)
+            # Reward now depends solely on task accuracy; formatting score is neutralized.
+            strict_format_score = 0.0
             route_cnt = route_count(completion=sequences_str)
 
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
@@ -332,11 +333,14 @@ def main_task(config):
 
     from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
 
+    use_reference_policy = OmegaConf.select(config, "algorithm.enable_reference_policy", default=True)
+
     role_worker_mapping = {
         Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
         Role.Critic: ray.remote(CriticWorker),
-        Role.RefPolicy: ray.remote(ActorRolloutRefWorker),
     }
+    if use_reference_policy:
+        role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
 
     global_pool_id = 'global_pool'
     resource_pool_spec = {
@@ -345,8 +349,9 @@ def main_task(config):
     mapping = {
         Role.ActorRollout: global_pool_id,
         Role.Critic: global_pool_id,
-        Role.RefPolicy: global_pool_id,
     }
+    if use_reference_policy:
+        mapping[Role.RefPolicy] = global_pool_id
 
     # we should adopt a multi-source reward function here
     # - for rule-based rm, we directly call a reward score
