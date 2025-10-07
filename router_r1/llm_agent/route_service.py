@@ -76,15 +76,32 @@ def get_llm_response_via_api(prompt,
         return [c.message.content for c in contents], completion_tokens
 
 
+OPENROUTER_MODEL_MAP = {
+    "qwen/qwen2.5-7b-instruct": "qwen/Qwen2.5-7B-Instruct",
+    "meta/llama-3.1-70b-instruct": "meta-llama/llama-3.1-70b-instruct",
+    "meta/llama-3.1-8b-instruct": "meta-llama/llama-3.1-8b-instruct",
+    "mistralai/mistral-7b-instruct-v0.3": "mistralai/Mistral-7B-Instruct-v0.3",
+    "mistralai/mixtral-8x22b-instruct-v0.1": "mistralai/Mixtral-8x22B-Instruct-v0.1",
+    "google/gemma-2-27b-it": "google/Gemma-2-27B-It",
+    "writer/palmyra-creative-122b": "writer/Palmyra-Creative-122B",
+    "nvidia/llama3-chatqa-1.5-8b": "nvidia/Llama-3.1-ChatQA-1.5-8B",
+    "nvidia/llama-3.1-nemotron-51b-instruct": "nvidia/Llama-3.1-Nemotron-51B-Instruct",
+    "nvidia/llama-3.3-nemotron-super-49b-v1": "nvidia/Llama-3.3-Nemotron-Super-49B-v1",
+    "ibm/granite-3.0-8b-instruct": "ibm/Granite-3.0-8B-Instruct",
+}
+
 API_PRICE_1M_TOKENS = {
-    "qwen/qwen2.5-7b-instruct": 0.3,
-    "meta/llama-3.1-70b-instruct": 0.88,
-    "meta/llama-3.1-8b-instruct": 0.18,
-    "mistralai/mistral-7b-instruct-v0.3": 0.2,
-    "mistralai/mixtral-8x22b-instruct-v0.1": 1.2,
-    "google/gemma-2-27b-it": 0.8,
-    "writer/palmyra-creative-122b": 1.8,
-    "nvidia/llama3-chatqa-1.5-8b": 0.18,
+    "qwen/Qwen2.5-7B-Instruct": 0.3,
+    "meta-llama/llama-3.1-70b-instruct": 0.88,
+    "meta-llama/llama-3.1-8b-instruct": 0.18,
+    "mistralai/Mistral-7B-Instruct-v0.3": 0.2,
+    "mistralai/Mixtral-8x22B-Instruct-v0.1": 1.2,
+    "google/Gemma-2-27B-It": 0.8,
+    "writer/Palmyra-Creative-122B": 1.8,
+    "nvidia/Llama-3.1-ChatQA-1.5-8B": 0.18,
+    "nvidia/Llama-3.1-Nemotron-51B-Instruct": 0.18,
+    "nvidia/Llama-3.3-Nemotron-Super-49B-v1": 0.18,
+    "ibm/Granite-3.0-8B-Instruct": 0.18,
 }
 
 
@@ -112,6 +129,9 @@ def request_task(data):
     if LLM_NAME == "":
         print("LLM Name Error")
         return q_id, "LLM Name Error", 0.0
+
+    # map to OpenRouter canonical ID if necessary
+    llm_identifier = OPENROUTER_MODEL_MAP.get(LLM_NAME, LLM_NAME)
     print(LLM_NAME)
     try:
         input_prompt = AGENT_PROMPT.format_map({"query": query_text})
@@ -119,14 +139,14 @@ def request_task(data):
                                                                       base_url=api_base,
                                                                       api_key=api_key,
                                                                       TAU=TAU,
-                                                                      LLM_MODEL=LLM_NAME)
+                                                                      LLM_MODEL=llm_identifier)
         print(single_response, completion_tokens)
     except Exception as e:
         print(e)
         single_response = "API Request Error"
         completion_tokens = 0.0
-
-    return q_id, single_response, int(completion_tokens) * API_PRICE_1M_TOKENS[LLM_NAME]
+    price = API_PRICE_1M_TOKENS.get(llm_identifier, 0.0)
+    return q_id, single_response, int(completion_tokens) * price
 
 
 def check_llm_name(target_llm):
@@ -164,7 +184,7 @@ def check_llm_name(target_llm):
         # print("!!!!!!!!!!!LLM Name Error!!!!!!!!!!!", target_llm)
         LLM_NAME = ""
 
-    return LLM_NAME, TAU
+    return OPENROUTER_MODEL_MAP.get(LLM_NAME, LLM_NAME), TAU
 
 
 def access_routing_pool(queries, api_base, api_key):
