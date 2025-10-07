@@ -25,26 +25,6 @@ except ImportError:  # pragma: no cover - optional dependency
     latex2sympy = None
     sympy = None
 
-try:
-    from math_verify import (
-        ExprExtractionConfig as _MathVerifyExprExtractionConfig,
-        LatexExtractionConfig as _MathVerifyLatexExtractionConfig,
-        parse as _math_verify_parse,
-        verify as _math_verify_verify,
-    )
-except ImportError:  # pragma: no cover - optional dependency
-    _math_verify_parse = None
-    _math_verify_verify = None
-    _MathVerifyLatexExtractionConfig = None
-    _MathVerifyExprExtractionConfig = None
-    _MATH_VERIFY_EXTRACTION_TARGETS = ()
-else:
-    _MATH_VERIFY_EXTRACTION_TARGETS = (
-        _MathVerifyLatexExtractionConfig(),
-        _MathVerifyExprExtractionConfig(),
-    )
-
-
 def normalize_answer(s):
     def remove_articles(text):
         return re.sub(r"\b(a|an|the)\b", " ", text)
@@ -127,46 +107,6 @@ def _clean_latex(expr: str) -> str:
     return cleaned
 
 
-def _math_verify_equivalent(prediction: str, golden_answer: str) -> Optional[bool]:
-    if _math_verify_parse is None or _math_verify_verify is None:
-        return None
-
-    try:
-        pred_candidates = _math_verify_parse(
-            prediction,
-            extraction_config=_MATH_VERIFY_EXTRACTION_TARGETS,
-            fallback_mode="first_match",
-            extraction_mode="any_match",
-            parsing_timeout=None,
-        )
-        gold_candidates = _math_verify_parse(
-            golden_answer,
-            extraction_config=_MATH_VERIFY_EXTRACTION_TARGETS,
-            fallback_mode="first_match",
-            extraction_mode="any_match",
-            parsing_timeout=None,
-        )
-    except Exception:
-        return None
-
-    if not pred_candidates or not gold_candidates:
-        return None
-
-    for gold_expr in gold_candidates:
-        for pred_expr in pred_candidates:
-            try:
-                if _math_verify_verify(
-                    gold_expr,
-                    pred_expr,
-                    timeout_seconds=None,
-                ):
-                    return True
-            except Exception:
-                continue
-
-    return False
-
-
 def _to_sympy(expr: str) -> Optional['sympy.Expr']:
     if latex2sympy is None or sympy is None:
         return None
@@ -185,10 +125,6 @@ def _to_sympy(expr: str) -> Optional['sympy.Expr']:
 
 
 def _math_equivalent(prediction: str, golden_answer: str) -> bool:
-    math_verify_result = _math_verify_equivalent(prediction, golden_answer)
-    if math_verify_result is not None:
-        return math_verify_result
-
     pred_expr = _to_sympy(prediction)
     gold_expr = _to_sympy(golden_answer)
     if pred_expr is None or gold_expr is None:
