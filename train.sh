@@ -129,7 +129,7 @@ HYDRA_ARGS=(
     "+reward_metric=em"
     "+cost_coe=0.0"
     "+api_base=https://openrouter.ai/api/v1"
-    "+api_key=['$API_KEY']"
+    "+api_key=$API_KEY"
 )
 
 if [[ -n "$LOAD_ACTOR_CKPT" ]]; then
