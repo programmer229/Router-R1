@@ -15,4 +15,5 @@ wandb
 IPython
 matplotlib
 latex2sympy2
+math-verify
 sympy
