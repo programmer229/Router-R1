@@ -3,6 +3,7 @@ import re
 from collections import deque
 import os
 from typing import List, Dict, Any, Tuple
+import numpy as np
 from dataclasses import dataclass
 from .tensor_helper import TensorHelper, TensorConfig
 from verl import DataProto
@@ -23,6 +24,7 @@ class GenerationConfig:
     exp_name: str = None
     api_base: str = None
     api_key: str = None
+    samples_per_env: int = 1
 
 class LLMGenerationManager:
     def __init__(
@@ -82,6 +84,35 @@ class LLMGenerationManager:
             print("RESPONSES:", responses_str)
         responses = self._batch_tokenize(responses_str)
         return responses, responses_str
+
+    def _collapse_sample_dim(
+        self,
+        responses_ids: torch.Tensor,
+        responses_str: List[List[str]],
+        samples_per_env: int,
+        sample_idx: int,
+    ) -> Tuple[torch.Tensor, List[str]]:
+        """
+        Reduce the [batch, samples_per_env, seq_len] tensor down to the single
+        sequence we will keep for each environment. For now we keep the first
+        sample, but this is the hook where other selection logic (e.g. highest
+        reward/likelihood) can be implemented.
+        """
+        batch_size = responses_ids.shape[0]
+
+        if samples_per_env == 0:
+            empty_tensor = responses_ids.new_full((batch_size, 0), self.tokenizer.pad_token_id)
+            return empty_tensor, [""] * batch_size
+
+        if samples_per_env <= 1:
+            flattened = responses_ids.squeeze(1)
+            flattened_str = [seqs[0] if seqs else "" for seqs in responses_str]
+            return flattened, flattened_str
+
+        chosen_idx = max(0, min(sample_idx, samples_per_env - 1))
+        selected_ids = responses_ids[:, chosen_idx, :].contiguous()
+        selected_str = [seqs[chosen_idx] if seqs else "" for seqs in responses_str]
+        return selected_ids, selected_str
 
     def _process_next_obs(self, next_obs: List[str]) -> torch.Tensor:
         """Process next observations from environment."""
@@ -226,8 +257,14 @@ class LLMGenerationManager:
         padded_output.batch = trimmed_batch
         return padded_output
 
-    def run_llm_loop(self, gen_batch, initial_input_ids: torch.Tensor) -> Tuple[Dict, Dict]:
-        """Run main LLM generation loop."""
+    def _run_single_sample_loop(
+        self,
+        gen_batch,
+        initial_input_ids: torch.Tensor,
+        sample_idx: int,
+    ) -> DataProto:
+        """Run main LLM generation loop for a single sample index."""
+
         original_left_side = {'input_ids': initial_input_ids[:, -self.config.max_start_length:]}
         original_right_side = {'responses': initial_input_ids[:, []], 'responses_with_info_mask': initial_input_ids[:, []]}
         batch_completion_tokens = torch.zeros(gen_batch.batch['input_ids'].shape[0], dtype=torch.float32)
@@ -268,9 +305,14 @@ class LLMGenerationManager:
                 print(e)
                 break
 
-            meta_info = gen_output.meta_info            
+            meta_info = gen_output.meta_info
             responses_ids, responses_str = self._postprocess_responses(gen_output.batch['responses'])
-            responses_ids, responses_str = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
+            responses_ids, responses_str, effective_samples = self.tensor_fn._example_level_pad(
+                responses_ids, responses_str, active_mask
+            )
+            responses_ids, responses_str = self._collapse_sample_dim(
+                responses_ids, responses_str, effective_samples, sample_idx
+            )
 
             # Execute in environment and process observations
             next_obs, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
@@ -321,7 +363,12 @@ class LLMGenerationManager:
 
                 meta_info = gen_output.meta_info
                 responses_ids, responses_str = self._postprocess_responses(gen_output.batch['responses'])
-                responses_ids, responses_str = self.tensor_fn._example_level_pad(responses_ids, responses_str, active_mask)
+                responses_ids, responses_str, effective_samples = self.tensor_fn._example_level_pad(
+                    responses_ids, responses_str, active_mask
+                )
+                responses_ids, responses_str = self._collapse_sample_dim(
+                    responses_ids, responses_str, effective_samples, sample_idx
+                )
 
                 # # Execute in environment and process observations
                 _, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
@@ -348,12 +395,52 @@ class LLMGenerationManager:
         
         print("ACTIVE_TRAJ_NUM:", active_num_list)
         
-        return self._compose_final_output(original_left_side, original_right_side, meta_info)
+        return self._compose_final_output(original_left_side, original_right_side, meta_info, sample_idx)
+
+    def run_llm_loop(self, gen_batch, initial_input_ids: torch.Tensor) -> DataProto:
+        """Generate rollouts for all requested samples per environment."""
+        samples_per_env = max(1, getattr(self.config, 'samples_per_env', 1))
+
+        if samples_per_env <= 1:
+            return self._run_single_sample_loop(gen_batch, initial_input_ids, sample_idx=0)
+
+        sample_outputs: List[DataProto] = []
+        for sample_idx in range(samples_per_env):
+            batch_clone = DataProto(
+                batch=gen_batch.batch.clone(),
+                non_tensor_batch={key: val.copy() for key, val in gen_batch.non_tensor_batch.items()},
+                meta_info=dict(gen_batch.meta_info),
+            )
+            initial_input_clone = initial_input_ids.clone()
+            sample_output = self._run_single_sample_loop(
+                batch_clone,
+                initial_input_clone,
+                sample_idx=sample_idx,
+            )
+            sample_outputs.append(sample_output)
+
+        final_output = DataProto.concat(sample_outputs)
+        aggregated_meta = {
+            key: (value.copy() if isinstance(value, list) else value)
+            for key, value in sample_outputs[0].meta_info.items()
+        }
+        for sample_output in sample_outputs[1:]:
+            for key, value in sample_output.meta_info.items():
+                if isinstance(value, list):
+                    existing = aggregated_meta.get(key, [])
+                    if not isinstance(existing, list):
+                        existing = []
+                    aggregated_meta[key] = existing + value
+                else:
+                    aggregated_meta[key] = value
+        final_output.meta_info.update(aggregated_meta)
+        return final_output
 
     def _compose_final_output(self, left_side: Dict,
                             right_side: Dict,
-                            meta_info: Dict) -> Tuple[Dict, Dict]:
-        """Compose final generation output."""
+                            meta_info: Dict,
+                            sample_idx: int) -> DataProto:
+        """Compose final generation output for a single sample run."""
         final_output = right_side.copy()
         final_output['prompts'] = left_side['input_ids']
         
@@ -376,8 +463,14 @@ class LLMGenerationManager:
         final_output['position_ids'] = self.tensor_fn.create_position_ids(
             final_output['attention_mask']
         )
-        
-        final_output = DataProto.from_dict(final_output)
+
+        sample_idx_arr = np.full(
+            (final_output['responses'].shape[0],),
+            sample_idx,
+            dtype=np.int32,
+        )
+
+        final_output = DataProto.from_dict(final_output, non_tensors={'sample_idx': sample_idx_arr})
         final_output.meta_info.update(meta_info)
         
         return final_output

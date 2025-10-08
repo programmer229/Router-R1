@@ -47,29 +47,55 @@ class TensorHelper:
         padded_tensor, _ = self.convert_pad_structure(concatenated, pad_to_left)
         return padded_tensor
 
-    def _example_level_pad(self, responses: torch.Tensor, 
-                          responses_str: List[str], 
-                          active_mask: torch.Tensor) -> Tuple[torch.Tensor, List[str]]:
+    def _example_level_pad(self, responses: torch.Tensor,
+                          responses_str: List[str],
+                          active_mask: torch.Tensor) -> Tuple[torch.Tensor, List[List[str]], int]:
         """
         Pad responses for non-active examples with pad tokens.
+
+        When multiple samples-per-environment are generated (n > 1),
+        `responses` will contain `active_envs * samples_per_env` rows.
+        This method reshapes them back into per-environment slots while
+        keeping inactive examples padded out.
         """
-        assert active_mask.sum() == responses.shape[0]
-        # Create masked responses tensor
-        batch_size = active_mask.shape[0]
-        seq_len = responses.shape[1]
-        padded_responses = torch.full(
-            (batch_size, seq_len), self.config.pad_token_id,
-            dtype=responses.dtype, device=responses.device
+        num_active = int(active_mask.sum().item())
+
+        if responses.numel() == 0 or num_active == 0:
+            samples_per_env = 0
+            batch_size = active_mask.shape[0]
+            seq_len = responses.shape[1] if responses.dim() > 1 else 0
+            padded = torch.full(
+                (batch_size, samples_per_env, seq_len),
+                self.config.pad_token_id,
+                dtype=responses.dtype if responses.numel() else torch.long,
+                device=responses.device if responses.numel() else active_mask.device,
+            )
+            padded_responses_str: List[List[str]] = [[] for _ in range(batch_size)]
+            return padded, padded_responses_str, samples_per_env
+
+        total_samples = responses.shape[0]
+        assert total_samples % num_active == 0, (
+            f"Mismatch between active envs ({num_active}) and responses ({total_samples})"
         )
-        padded_responses[active_mask] = responses
-        
-        # Create masked response strings
-        padded_responses_str = [""] * batch_size
-        
-        s = 0
-        for i, is_active in enumerate(active_mask):
-            if is_active:
-                padded_responses_str[i] = responses_str[s]
-                s += 1
-                
-        return padded_responses, padded_responses_str
+        samples_per_env = total_samples // num_active
+        seq_len = responses.shape[1]
+        batch_size = active_mask.shape[0]
+
+        padded_responses = torch.full(
+            (batch_size, samples_per_env, seq_len),
+            self.config.pad_token_id,
+            dtype=responses.dtype,
+            device=responses.device,
+        )
+        padded_responses_str = [[""] * samples_per_env for _ in range(batch_size)]
+
+        active_indices = torch.nonzero(active_mask, as_tuple=False).flatten().tolist()
+        cursor = 0
+
+        for idx in active_indices:
+            span_slice = slice(cursor, cursor + samples_per_env)
+            padded_responses[idx] = responses[span_slice]
+            padded_responses_str[idx] = responses_str[span_slice]
+            cursor += samples_per_env
+
+        return padded_responses, padded_responses_str, samples_per_env

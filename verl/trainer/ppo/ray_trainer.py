@@ -489,7 +489,8 @@ class RayPPOTrainer(object):
             no_think_rl=self.config.algorithm.no_think_rl,
             exp_name=self.config.trainer.experiment_name,
             api_base=self.config.api_base,
-            api_key=self.config.api_key
+            api_key=self.config.api_key,
+            samples_per_env=self.config.actor_rollout_ref.rollout.n,
         )
 
         # Agent config preparation
@@ -759,7 +760,8 @@ class RayPPOTrainer(object):
             no_think_rl=self.config.algorithm.no_think_rl,
             exp_name=self.config.trainer.experiment_name,
             api_base=self.config.api_base,
-            api_key=self.config.api_key
+            api_key=self.config.api_key,
+            samples_per_env=self.config.actor_rollout_ref.rollout.n,
         )
 
         generation_manager = LLMGenerationManager(
