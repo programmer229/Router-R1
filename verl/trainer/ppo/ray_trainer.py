@@ -560,9 +560,13 @@ class RayPPOTrainer(object):
                             initial_input_ids=first_input_ids,
                         )
 
-                    samples_per_env = int(final_gen_batch_output.meta_info.get('samples_per_env', 1) or 1)
-                    if samples_per_env > 1:
-                        test_batch = test_batch.repeat(repeat_times=samples_per_env, interleave=True)
+                    ref_batch_size = test_batch.batch.batch_size[0]
+                    gen_batch_size = final_gen_batch_output.batch.batch_size[0]
+                    if ref_batch_size > 0 and gen_batch_size > ref_batch_size:
+                        assert gen_batch_size % ref_batch_size == 0, \
+                            f"Generated batch size {gen_batch_size} is not a multiple of reference batch {ref_batch_size}"
+                        repeat_times = gen_batch_size // ref_batch_size
+                        test_batch = test_batch.repeat(repeat_times=repeat_times, interleave=True)
 
                     test_batch = test_batch.union(final_gen_batch_output)
                     
