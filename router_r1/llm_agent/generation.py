@@ -242,19 +242,30 @@ class LLMGenerationManager:
         padded_output = self.actor_rollout_wg.generate_sequences(padded_active_batch)
 
         # Remove padding from output
-        trimmed_batch = {k: v[:-padding_size] for k, v in padded_output.batch.items()}
-        
-        # Handle meta_info if present
-        if hasattr(padded_output, 'meta_info') and padded_output.meta_info:
-            trimmed_meta = {}
-            for k, v in padded_output.meta_info.items():
-                if isinstance(v, torch.Tensor):
-                    trimmed_meta[k] = v[:-padding_size]
+        samples_per_env = max(1, getattr(self.config, 'samples_per_env', 1))
+        trim_count = padding_size * samples_per_env if padding_size > 0 else 0
+
+        if trim_count > 0:
+            trimmed_batch = {}
+            for k, v in padded_output.batch.items():
+                if v.shape[0] >= trim_count:
+                    trimmed_batch[k] = v[:-trim_count]
                 else:
-                    trimmed_meta[k] = v
-            padded_output.meta_info = trimmed_meta
+                    trimmed_batch[k] = v
+            padded_output.batch = trimmed_batch
             
-        padded_output.batch = trimmed_batch
+            # Handle meta_info if present
+            if hasattr(padded_output, 'meta_info') and padded_output.meta_info:
+                trimmed_meta = {}
+                for k, v in padded_output.meta_info.items():
+                    if isinstance(v, torch.Tensor) and v.shape[0] >= trim_count:
+                        trimmed_meta[k] = v[:-trim_count]
+                    elif isinstance(v, list) and len(v) >= trim_count:
+                        trimmed_meta[k] = v[:-trim_count]
+                    else:
+                        trimmed_meta[k] = v
+                padded_output.meta_info = trimmed_meta
+
         return padded_output
 
     def _run_single_sample_loop(
