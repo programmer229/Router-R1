@@ -559,7 +559,11 @@ class RayPPOTrainer(object):
                             gen_batch=test_gen_batch,
                             initial_input_ids=first_input_ids,
                         )
-                    
+
+                    samples_per_env = int(final_gen_batch_output.meta_info.get('samples_per_env', 1) or 1)
+                    if samples_per_env > 1:
+                        test_batch = test_batch.repeat(repeat_times=samples_per_env, interleave=True)
+
                     test_batch = test_batch.union(final_gen_batch_output)
                     
                     for key in test_batch.batch.keys():

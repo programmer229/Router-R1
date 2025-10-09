@@ -313,6 +313,7 @@ class LLMGenerationManager:
             responses_ids, responses_str = self._collapse_sample_dim(
                 responses_ids, responses_str, effective_samples, sample_idx
             )
+            meta_info['samples_per_env'] = max(effective_samples, 1)
 
             # Execute in environment and process observations
             next_obs, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
@@ -369,6 +370,7 @@ class LLMGenerationManager:
                 responses_ids, responses_str = self._collapse_sample_dim(
                     responses_ids, responses_str, effective_samples, sample_idx
                 )
+                meta_info['samples_per_env'] = max(effective_samples, 1)
 
                 # # Execute in environment and process observations
                 _, dones, valid_action, is_route, cur_completion_tokens = self.execute_predictions(
