@@ -432,6 +432,8 @@ class LLMGenerationManager:
             )
             sample_outputs.append(sample_output)
 
+        self._align_sample_outputs(sample_outputs)
+
         final_output = DataProto.concat(sample_outputs)
         aggregated_meta = {
             key: (value.copy() if isinstance(value, list) else value)
@@ -448,6 +450,61 @@ class LLMGenerationManager:
                     aggregated_meta[key] = value
         final_output.meta_info.update(aggregated_meta)
         return final_output
+
+    def _align_sample_outputs(self, sample_outputs: List[DataProto]) -> None:
+        """Pad variable-length tensors across different samples so they can be concatenated."""
+        if len(sample_outputs) <= 1:
+            return
+
+        pad_token = self.tokenizer.pad_token_id
+        if pad_token is None:
+            pad_token = self.tokenizer.eos_token_id
+        if pad_token is None:
+            pad_token = 0
+
+        pad_zero_keys = {
+            'attention_mask',
+            'info_mask',
+            'responses_with_info_mask',
+            'old_log_probs',
+        }
+
+        all_keys = set(sample_outputs[0].batch.keys())
+        for out in sample_outputs[1:]:
+            all_keys.update(out.batch.keys())
+
+        for key in all_keys:
+            # skip position_ids; we will regenerate after padding masks
+            if key == 'position_ids':
+                continue
+            dims = [out.batch[key].ndim for out in sample_outputs if key in out.batch]
+            if not dims:
+                continue
+            if any(dim < 2 for dim in dims):
+                continue
+            max_len = max(out.batch[key].shape[1] for out in sample_outputs if key in out.batch)
+            for out in sample_outputs:
+                if key not in out.batch:
+                    continue
+                tensor = out.batch[key]
+                cur_len = tensor.shape[1]
+                if cur_len == max_len:
+                    continue
+                pad_size = max_len - cur_len
+                if tensor.dtype.is_floating_point:
+                    pad_value = 0.0
+                elif key in pad_zero_keys:
+                    pad_value = 0
+                else:
+                    pad_value = pad_token
+                pad_shape = list(tensor.shape)
+                pad_shape[1] = pad_size
+                pad_tensor = tensor.new_full(pad_shape, pad_value)
+                out.batch[key] = torch.cat([tensor, pad_tensor], dim=1)
+
+        for out in sample_outputs:
+            if 'position_ids' in out.batch and 'attention_mask' in out.batch:
+                out.batch['position_ids'] = self.tensor_fn.create_position_ids(out.batch['attention_mask'])
 
     def _compose_final_output(self, left_side: Dict,
                             right_side: Dict,
